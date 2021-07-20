@@ -2,7 +2,7 @@
 use reqwest::{self, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
-//use std::time::{Duration, Instant};
+use std::time::{Duration, Instant};
 use tungstenite::{connect, Message};
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
@@ -24,6 +24,17 @@ impl Candle {
             low,
             close,
             volume,
+        }
+    }
+    pub fn zeros() -> Candle {
+        /// Creates candle with all values set to zero
+        Candle {
+            timestamp: 0,
+            open: 0.0,
+            high: 0.0,
+            low: 0.0,
+            close: 0.0,
+            volume: 0.0,
         }
     }
     pub fn timestamp(&self) -> u64 {
@@ -175,11 +186,19 @@ async fn main() -> Result<(), reqwest::Error> {
     let interval = "15m";
     let payload = json!({
         "symbol":ticker.to_uppercase(),"interval":interval,"limit":500});
-    let klines = get_kline(payload).await?;
+
+
+    let old_klines = get_kline(payload.clone()).await?;
+
+
+    let new_klines = get_kline_vec(payload).await?;
+
+    
+    // println!("{:#?}", klines);
     //    ws(ticker.to_string(), interval.to_string(), klines).await;
-    let candles = CandleLine::from_vec(klines);
-    let sigs = generate_signals(candles.clone()).await;
-    backtest(ticker.to_string(), candles.clone(), sigs, 100.0, 0.002).await;
+    //let candles = CandleLine::from_vec(klines);
+    //let sigs = generate_signals(candles.clone()).await;
+    //backtest(ticker.to_string(), candles.clone(), sigs, 100.0, 0.002).await;
 
     Ok(())
 }
@@ -249,6 +268,8 @@ async fn backtest(
     for sig_id in 0..len {
         println!();
         let price = data_vec[sig_id].close();
+
+        // display percentage change from entry
         match signal[sig_id] {
             Signal::Wait => match entry_position {
                 Signal::Long => {
@@ -316,6 +337,8 @@ async fn get_kline(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
         .await?;
 
     // Parse from Value object to matrix of floats
+
+    let t_new = Instant::now();
     let data: Vec<Vec<Value>> = serde_json::from_str(&res).unwrap();
     let data_v2 = data
         .iter()
@@ -337,7 +360,38 @@ async fn get_kline(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
             Candle::new(a[0] as u64, a[1], a[2], a[3], a[4], a[5])
         })
         .collect::<Vec<Candle>>();
+
+    println!("Old took: {}",t_new.elapsed().as_micros());
     Ok(klines)
+}
+
+async fn get_kline_vec(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
+    let client = Client::new();
+    let res = client
+        .get("https://api.binance.com/api/v3/klines")
+        .query(&payload)
+        .send()
+        .await?
+        .text()
+        .await?;
+
+    // Parse from Value object to matrix of floats
+    let t_new = Instant::now();
+    let data: Vec<Vec<Value>> = serde_json::from_str(&res).unwrap();
+    let candle_vec = data
+        .iter()
+        .map(|row| Candle {
+            timestamp: row[0].as_u64().unwrap_or(0),
+            open: row[1].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+            high: row[2].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+            low: row[3].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+            close: row[4].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+            volume: row[5].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+        })
+        .collect::<Vec<Candle>>();
+    println!("New took: {}",t_new.elapsed().as_micros());
+    //Ok(vec![Candle::zeros()])
+    Ok(candle_vec)
 }
 
 async fn ws(ticker: String, interval: String, mut candles: Vec<Candle>) {
