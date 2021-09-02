@@ -326,45 +326,6 @@ async fn backtest(
 async fn trade() {}
 async fn livetest() {}
 
-async fn get_kline(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
-    let client = Client::new();
-    let res = client
-        .get("https://api.binance.com/api/v3/klines")
-        .query(&payload)
-        .send()
-        .await?
-        .text()
-        .await?;
-
-    // Parse from Value object to matrix of floats
-
-    let t_new = Instant::now();
-    let data: Vec<Vec<Value>> = serde_json::from_str(&res).unwrap();
-    let data_v2 = data
-        .iter()
-        .map(|row| {
-            row.iter()
-                .map(|val| match val {
-                    Value::String(a) => a.parse::<f64>().unwrap(),
-                    Value::Number(a) => a.as_f64().unwrap(),
-                    _ => 0.0,
-                })
-                .collect::<Vec<f64>>()
-        })
-        .collect::<Vec<Vec<f64>>>();
-    // Translating to Vec of Candles
-    let klines = data_v2
-        .iter()
-        .map(|a| {
-            //println!("{:?}",a);
-            Candle::new(a[0] as u64, a[1], a[2], a[3], a[4], a[5])
-        })
-        .collect::<Vec<Candle>>();
-
-    println!("Old took: {}",t_new.elapsed().as_micros());
-    Ok(klines)
-}
-
 async fn get_kline_vec(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
     let client = Client::new();
     let res = client
@@ -394,6 +355,16 @@ async fn get_kline_vec(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
     Ok(candle_vec)
 }
 
+fn process_tick(candles: Vec<Candle>,lookback:i32/*strategy:*/) {
+    /// This function takes a vector of candles and strategy hashmap or alternative data structure 
+    /// and uses it to process this particullar tick
+    /// it is meant to be used in live and backtest scenarios
+    /// main focus speed and reliability
+
+    let last = candles.last().unwrap();
+
+}
+
 async fn ws(ticker: String, interval: String, mut candles: Vec<Candle>) {
     let (mut socket, response) =
         connect("wss://stream.binance.com:9443/ws").expect("Cannot connect");
@@ -413,6 +384,7 @@ async fn ws(ticker: String, interval: String, mut candles: Vec<Candle>) {
                 let msg: serde_json::Value = serde_json::from_str(&t).unwrap();
                 let kline = &msg["k"];
                 if msg.get("e") != None {
+                    // Creating new candle from data acquired 
                     let res = Candle::new(
                         kline["t"].as_u64().unwrap(),
                         kline["o"].as_str().unwrap().parse::<f64>().unwrap(),
@@ -433,6 +405,7 @@ async fn ws(ticker: String, interval: String, mut candles: Vec<Candle>) {
             _ => (),
         };
         println!("{:#?}", &candles);
+        process_tick();
     }
 }
 
