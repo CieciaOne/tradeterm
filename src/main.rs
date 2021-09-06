@@ -187,15 +187,11 @@ async fn main() -> Result<(), reqwest::Error> {
     let payload = json!({
         "symbol":ticker.to_uppercase(),"interval":interval,"limit":500});
 
-
-    let old_klines = get_kline(payload.clone()).await?;
-
-
-    let new_klines = get_kline_vec(payload).await?;
+    let klines = get_kline_vec(payload).await?;
 
     
     // println!("{:#?}", klines);
-    //    ws(ticker.to_string(), interval.to_string(), klines).await;
+    trade_live(ticker.to_string(), interval.to_string(), klines).await;
     //let candles = CandleLine::from_vec(klines);
     //let sigs = generate_signals(candles.clone()).await;
     //backtest(ticker.to_string(), candles.clone(), sigs, 100.0, 0.002).await;
@@ -323,48 +319,6 @@ async fn backtest(
     );
 }
 
-async fn trade() {}
-async fn livetest() {}
-
-async fn get_kline(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
-    let client = Client::new();
-    let res = client
-        .get("https://api.binance.com/api/v3/klines")
-        .query(&payload)
-        .send()
-        .await?
-        .text()
-        .await?;
-
-    // Parse from Value object to matrix of floats
-
-    let t_new = Instant::now();
-    let data: Vec<Vec<Value>> = serde_json::from_str(&res).unwrap();
-    let data_v2 = data
-        .iter()
-        .map(|row| {
-            row.iter()
-                .map(|val| match val {
-                    Value::String(a) => a.parse::<f64>().unwrap(),
-                    Value::Number(a) => a.as_f64().unwrap(),
-                    _ => 0.0,
-                })
-                .collect::<Vec<f64>>()
-        })
-        .collect::<Vec<Vec<f64>>>();
-    // Translating to Vec of Candles
-    let klines = data_v2
-        .iter()
-        .map(|a| {
-            //println!("{:?}",a);
-            Candle::new(a[0] as u64, a[1], a[2], a[3], a[4], a[5])
-        })
-        .collect::<Vec<Candle>>();
-
-    println!("Old took: {}",t_new.elapsed().as_micros());
-    Ok(klines)
-}
-
 async fn get_kline_vec(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
     let client = Client::new();
     let res = client
@@ -376,7 +330,6 @@ async fn get_kline_vec(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
         .await?;
 
     // Parse from Value object to matrix of floats
-    let t_new = Instant::now();
     let data: Vec<Vec<Value>> = serde_json::from_str(&res).unwrap();
     let candle_vec = data
         .iter()
@@ -389,12 +342,11 @@ async fn get_kline_vec(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
             volume: row[5].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
         })
         .collect::<Vec<Candle>>();
-    println!("New took: {}",t_new.elapsed().as_micros());
     //Ok(vec![Candle::zeros()])
     Ok(candle_vec)
 }
 
-fn process_tick(candles: Vec<Candle>,/*strategy:*/) {
+fn process_ticks(candles: Vec<Candle>, /*strategy:*/) {
     /// This function takes a vector of candles and strategy hashmap or alternative data structure 
     /// and uses it to process this particullar tick
     /// it is meant to be used in live and backtest scenarios
@@ -404,7 +356,7 @@ fn process_tick(candles: Vec<Candle>,/*strategy:*/) {
 
 }
 
-async fn ws(ticker: String, interval: String, mut candles: Vec<Candle>) {
+async fn trade_live(ticker: String, interval: String, mut candles: Vec<Candle>) {
     //process_tick()
     let (mut socket, response) =
         connect("wss://stream.binance.com:9443/ws").expect("Cannot connect");
@@ -423,7 +375,9 @@ async fn ws(ticker: String, interval: String, mut candles: Vec<Candle>) {
             Message::Text(t) => {
                 let msg: serde_json::Value = serde_json::from_str(&t).unwrap();
                 let kline = &msg["k"];
+                // Only if Message is correct (no errors)
                 if msg.get("e") != None {
+                    let t_new = Instant::now();
                     // Creating new candle from data acquired 
                     let res = Candle::new(
                         kline["t"].as_u64().unwrap(),
@@ -434,17 +388,29 @@ async fn ws(ticker: String, interval: String, mut candles: Vec<Candle>) {
                         kline["v"].as_str().unwrap().parse::<f64>().unwrap(),
                     );
                     if kline.get("x") == Some(&Value::Bool(true)) {
+                        // On full candle premanently add to candles vec
                         candles.push(res);
                     } else {
+                        // Replace latest tick with new one
                         candles.pop();
                         candles.push(res);
                         //println!("{:?}",candles.last_mut().unwrap());
                     }
+                    /*  Here 
+                     *  is
+                     *  the
+                     *  place
+                     *  to
+                     *  run
+                     *  strategies
+                     */
+
+                    println!("Message processing took: {} microseconds",t_new.elapsed().as_micros());
                 }
             }
             _ => (),
         };
-        println!("{:#?}", &candles);
+        //println!("{:#?}", &candles);
     }
 }
 
