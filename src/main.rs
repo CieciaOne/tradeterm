@@ -5,6 +5,51 @@ use serde_json::{self, json, Value};
 use std::time::{Duration, Instant};
 use tungstenite::{connect, Message};
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Config {
+    name: String,
+    description: String,
+    ticker: String,
+    timeframe: String,
+    window: usize,
+    shift: i32,
+    strategy: String,
+}
+impl Config {
+    pub fn new(name: String, description: String, ticker: String, timeframe: String, window: usize, shift: i32, strategy: String) -> Config {
+        Config {
+            name,
+            description,
+            ticker,
+            timeframe,
+            window,
+            shift,
+            strategy
+        }
+    }
+    pub fn get_name(&self) -> String {
+        self.name.clone()
+    } 
+    pub fn get_description(&self) -> String {
+        self.description.clone()
+    } 
+    pub fn get_ticker(&self) -> String {
+        self.ticker.clone()
+    } 
+    pub fn get_timeframe(&self) -> String {
+        self.timeframe.clone()
+    } 
+    pub fn get_window(&self) -> usize {
+        self.window
+    } 
+    pub fn get_shift(&self) -> i32 {
+        self.shift
+    } 
+    pub fn get_strategy(&self) -> String {
+        self.strategy.clone()
+    } 
+}
+
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 struct Candle {
     timestamp: u64,
@@ -26,6 +71,7 @@ impl Candle {
             volume,
         }
     }
+    // only for testing purposes
     pub fn zeros() -> Candle {
         /// Creates candle with all values set to zero
         Candle {
@@ -56,125 +102,10 @@ impl Candle {
         self.volume
     }
 }
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct CandleLine {
-    data: Vec<Candle>,
-}
 
-impl Iterator for CandleLine {
-    type Item = Candle;
-
-    //please don't use this, you will regret immediately
-    fn next(&mut self) -> Option<Candle> {
-        Some(*self.data.iter().next()?)
-    }
-}
-impl CandleLine {
-    pub fn new() -> CandleLine {
-        /// Create new empty candleline
-        CandleLine {
-            data: Vec::<Candle>::new(),
-        }
-    }
-    pub fn get(&self, index: usize) -> Candle {
-        /// Return candle with given index
-        self.data[index]
-    }
-    pub fn get_range(&mut self, start_index: usize, end_index: usize) -> Vec<Candle> {
-        /// Return candle with given index
-        if start_index > end_index {
-            let temp = &mut self.data.clone()[end_index..start_index];
-            temp.reverse();
-            temp.to_vec()
-        } else {
-            self.data[start_index..end_index].to_vec()
-        }
-    }
-    pub fn last(&self) -> Candle {
-        /// Return last candle
-        self.data[self.len()]
-    }
-    pub fn len(&self) -> usize {
-        /// Return number of elements in candleline / length of candleline
-        self.data.len()
-    }
-    pub fn push(&mut self, kline: Candle) {
-        /// Add new candle to candleline
-        self.data.push(kline);
-    }
-    pub fn all(&self) -> Vec<Candle> {
-        /// Reuturns all candleline as vector of candles
-        self.data.clone()
-    }
-    pub fn timestamps(self) -> Vec<u64> {
-        /// Returns vector containing timestamps from all candles
-        self.data.iter().map(|x| x.timestamp).collect::<Vec<u64>>()
-    }
-    pub fn opens(self) -> Vec<f64> {
-        /// Returns vector containing open price from all candles
-        self.data.iter().map(|x| x.open).collect::<Vec<f64>>()
-    }
-    pub fn highs(self) -> Vec<f64> {
-        /// Returns vector containing high price from all candles
-        self.data.iter().map(|x| x.high).collect::<Vec<f64>>()
-    }
-    pub fn lows(self) -> Vec<f64> {
-        /// Returns vector containing low price from all candles
-        self.data.iter().map(|x| x.low).collect::<Vec<f64>>()
-    }
-    pub fn closes(self) -> Vec<f64> {
-        /// Returns vector containing close price from all candles
-        self.data.iter().map(|x| x.close).collect::<Vec<f64>>()
-    }
-    pub fn volumes(self) -> Vec<f64> {
-        /// Returns vector containing volume from all candles
-        self.data.iter().map(|x| x.volume).collect::<Vec<f64>>()
-    }
-    pub fn from_vec(kline: Vec<Candle>) -> CandleLine {
-        let mut res = CandleLine::new();
-        kline.iter().for_each(|x| {
-            res.push(Candle {
-                timestamp: x.timestamp,
-                open: x.open,
-                high: x.high,
-                low: x.low,
-                close: x.close,
-                volume: x.volume,
-            });
-        });
-        res
-    }
-    pub fn heikinashi(&self) -> CandleLine {
-        /// Method generating Heikin Ashi candlesticks, best use with buffer of at least 10
-        /// candles in past to decrease "synthetic" first candle
-        let data = self.all();
-        let mut ha = CandleLine::new();
-        ha.push(Candle::new(
-            data[0].timestamp(),
-            (data[0].open() + data[0].close()) / 2.0,
-            data[0].high(),
-            data[0].low(),
-            (data[0].open() + data[0].high() + data[0].low() + data[0].close()) / 4.0,
-            data[0].volume(),
-        ));
-
-        for i in 1..data.len() {
-            let kline = Candle::new(
-                data[i].timestamp(),
-                (ha.get(i - 1).open() + ha.get(i - 1).close()) / 2.0, // This needs to be changed
-                data[i].high(),
-                data[i].low(),
-                (data[i].open() + data[i].high() + data[i].low() + data[i].close()) / 4.0,
-                data[i].volume(),
-            );
-            ha.push(kline);
-        }
-        ha
-    }
-}
 #[derive(Debug, std::cmp::PartialEq)]
 enum Signal {
-    Wait,
+    Sleep,
     Long,
     Short,
 }
@@ -182,22 +113,22 @@ enum Signal {
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     //let data = live_kline("BTCUSDT".to_string(), "5m".to_string()).await;
-    let ticker = "dotusdt";
-    let interval = "15m";
+    let config = Config::new("def_cfg".to_string(),"This is a default config for development purposes".to_string(),"BTCUSDT".to_string(),"5m".to_string(),16,0,"ExS".to_string());
     let payload = json!({
-        "symbol":ticker.to_uppercase(),"interval":interval,"limit":500});
+        "symbol":config.get_ticker().to_uppercase(),"interval":config.get_timeframe(),"limit":500});
 
-    let klines = get_kline_vec(payload).await?;
+    let klines = get_candles(payload).await?;
 
     
     // println!("{:#?}", klines);
-    trade_live(ticker.to_string(), interval.to_string(), klines).await;
+    trade_live(config, klines).await;
     //let candles = CandleLine::from_vec(klines);
     //let sigs = generate_signals(candles.clone()).await;
     //backtest(ticker.to_string(), candles.clone(), sigs, 100.0, 0.002).await;
 
     Ok(())
 }
+/*
 async fn generate_signals(data: CandleLine) -> Vec<Signal> {
     let mut signals: Vec<Signal> = Vec::new();
     let d = data.clone().closes();
@@ -205,7 +136,7 @@ async fn generate_signals(data: CandleLine) -> Vec<Signal> {
     let ma1 = moving_average(ha.clone().closes().clone(), 4);
     let mut ma2 = moving_average(ha.clone().closes().clone(), 4);
     ma2.rotate_right(2);
-    signals.push(Signal::Wait);
+    signals.push(Signal::Sleep);
     let mut entry_price = 0.0;
 
     // Yo bro I fucked up i'ma mess not gonna lie
@@ -214,7 +145,7 @@ async fn generate_signals(data: CandleLine) -> Vec<Signal> {
 
     //
 
-    let mut position = Signal::Wait;
+    let mut position = Signal::Sleep;
     for i in 1..ma1.len() {
         if i - last_trade_idx > limit
             && crossover(&ma1[i - 1..i + 1].to_vec(), &ma2[i - 1..i + 1].to_vec())
@@ -231,7 +162,7 @@ async fn generate_signals(data: CandleLine) -> Vec<Signal> {
             entry_price = d[i];
             last_trade_idx = i;
         } else {
-            signals.push(Signal::Wait);
+            signals.push(Signal::Sleep);
         }
     }
     signals
@@ -260,14 +191,14 @@ async fn backtest(
     let fee_multiplier = 1.0 - fee;
     //let diffs:Vec<f64> = Vec::new();
     let mut entry_price = 0.0;
-    let mut entry_position = Signal::Wait;
+    let mut entry_position = Signal::Sleep;
     for sig_id in 0..len {
         println!();
         let price = data_vec[sig_id].close();
 
         // display percentage change from entry
         match signal[sig_id] {
-            Signal::Wait => match entry_position {
+            Signal::Sleep => match entry_position {
                 Signal::Long => {
                     println!(
                         "Pass\tDiff: {:.2} %",
@@ -318,8 +249,9 @@ async fn backtest(
         start_balance
     );
 }
+*/
 
-async fn get_kline_vec(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
+async fn get_candles(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
     let client = Client::new();
     let res = client
         .get("https://api.binance.com/api/v3/klines")
@@ -342,30 +274,36 @@ async fn get_kline_vec(payload: Value) -> Result<Vec<Candle>, reqwest::Error> {
             volume: row[5].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
         })
         .collect::<Vec<Candle>>();
-    //Ok(vec![Candle::zeros()])
     Ok(candle_vec)
 }
 
-fn process_ticks(candles: Vec<Candle>, /*strategy:*/) {
+fn process_ticks(candles: &Vec<Candle> /*strategy:*/) -> Signal{
     /// This function takes a vector of candles and strategy hashmap or alternative data structure 
     /// and uses it to process this particullar tick
     /// it is meant to be used in live and backtest scenarios
     /// main focus speed and reliability
+    //println!("first:{:?}",candles.first());
+    println!("last:{:#?}",&candles);
 
-    let last = candles.last().unwrap();
+
+    let signal: Signal = Signal::Sleep;
+    signal
 
 }
 
-async fn trade_live(ticker: String, interval: String, mut candles: Vec<Candle>) {
-    //process_tick()
+async fn trade_live(cfg: Config, mut candles: Vec<Candle>) {
+    // Use prefetched Candles
+    // Connecting to websocket API and then processing data from it to generate signals
+
     let (mut socket, response) =
         connect("wss://stream.binance.com:9443/ws").expect("Cannot connect");
     println!("Connected with status: {}", response.status());
     for (ref header, _value) in response.headers() {
         println!("* {}", header);
     }
+    // Create payload to subscribe to websocket
     let payload = json!({"method":"SUBSCRIBE",
-    "params":[format!("{}@kline_{}",ticker,interval)],
+    "params":[format!("{}@kline_{}",cfg.get_ticker().to_lowercase(),cfg.get_timeframe())],
     "id":1});
     let a = serde_json::to_string(&payload).unwrap();
 
@@ -374,6 +312,8 @@ async fn trade_live(ticker: String, interval: String, mut candles: Vec<Candle>) 
         match socket.read_message().expect("Error reading message") {
             Message::Text(t) => {
                 let msg: serde_json::Value = serde_json::from_str(&t).unwrap();
+                // message debug below
+                // println!("{:?}",&msg);
                 let kline = &msg["k"];
                 // Only if Message is correct (no errors)
                 if msg.get("e") != None {
@@ -394,26 +334,39 @@ async fn trade_live(ticker: String, interval: String, mut candles: Vec<Candle>) 
                         // Replace latest tick with new one
                         candles.pop();
                         candles.push(res);
-                        //println!("{:?}",candles.last_mut().unwrap());
+                        //println!("{:?}",&candles.last());
                     }
-                    /*  Here 
-                     *  is
-                     *  the
-                     *  place
-                     *  to
-                     *  run
-                     *  strategies
+                    /*  Strategies Here 
+                     *   |
+                     *   |
+                     *  \ /
+                     *   v
                      */
 
-                    println!("Message processing took: {} microseconds",t_new.elapsed().as_micros());
+                    // Run processing function on range of candles
+                    let mut signal:Signal;
+                    if &cfg.get_window() > &candles.len() {
+                        signal = process_ticks(&candles.to_vec());
+                    }
+                    else{
+                        signal = process_ticks(&candles[&candles.len()-cfg.get_window()..].to_vec());
+                    }
+                    //println!("{:?}",&signal);
+                    //println!("Message processing took: {} microseconds",t_new.elapsed().as_micros());
                 }
+                else {
+                    println!("{:?}",msg.get("e"));
+                }
+            
             }
+            // Pass everything that is not text data
             _ => (),
         };
         //println!("{:#?}", &candles);
     }
 }
 
+// ma and crossover functions will be moved from here
 fn moving_average(data: Vec<f64>, window: usize) -> Vec<f64> {
     let mut res = Vec::new();
     if window >= data.len() {
@@ -439,6 +392,8 @@ fn crossover<T: std::cmp::PartialOrd>(a: &Vec<T>, b: &Vec<T>) -> bool {
         false
     }
 }
+
+
 
 #[cfg(test)]
 mod tests {
