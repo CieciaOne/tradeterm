@@ -5,120 +5,8 @@ use serde_json::{self, json, Value};
 use std::time::{Duration, Instant};
 use tungstenite::{connect, Message};
 
-//mod strategy;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct Config {
-    name: String,
-    description: String,
-    ticker: String,
-    timeframe: String,
-    window: usize,
-    shift: i32,
-    strategy: String,
-}
-impl Config {
-    pub fn new(
-        name: String,
-        description: String,
-        ticker: String,
-        timeframe: String,
-        window: usize,
-        shift: i32,
-        strategy: String,
-    ) -> Config {
-        Config {
-            name: name.to_lowercase(),
-            description,
-            ticker,
-            timeframe,
-            window,
-            shift,
-            strategy: strategy.to_lowercase(),
-        }
-    }
-    pub fn get_name(&self) -> String {
-        self.name.clone()
-    }
-    pub fn get_description(&self) -> String {
-        self.description.clone()
-    }
-    pub fn get_ticker(&self) -> String {
-        self.ticker.clone()
-    }
-    pub fn get_timeframe(&self) -> String {
-        self.timeframe.clone()
-    }
-    pub fn get_window(&self) -> usize {
-        self.window
-    }
-    pub fn get_shift(&self) -> i32 {
-        self.shift
-    }
-    pub fn get_strategy(&self) -> String {
-        self.strategy.clone()
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
-struct Candle {
-    timestamp: u64,
-    open: f64,
-    high: f64,
-    low: f64,
-    close: f64,
-    volume: f64,
-}
-
-impl Candle {
-    pub fn new(timestamp: u64, open: f64, high: f64, low: f64, close: f64, volume: f64) -> Candle {
-        Candle {
-            timestamp,
-            open,
-            high,
-            low,
-            close,
-            volume,
-        }
-    }
-    // only for testing purposes
-    pub fn zeros() -> Candle {
-        /// Creates candle with all values set to zero
-        Candle {
-            timestamp: 0,
-            open: 0.0,
-            high: 0.0,
-            low: 0.0,
-            close: 0.0,
-            volume: 0.0,
-        }
-    }
-    pub fn timestamp(&self) -> u64 {
-        self.timestamp
-    }
-    pub fn open(&self) -> f64 {
-        self.open
-    }
-    pub fn high(&self) -> f64 {
-        self.high
-    }
-    pub fn low(&self) -> f64 {
-        self.low
-    }
-    pub fn close(&self) -> f64 {
-        self.close
-    }
-    pub fn volume(&self) -> f64 {
-        self.volume
-    }
-}
-
-#[derive(Debug, std::cmp::PartialEq)]
-enum Signal {
-    Sleep,
-    Long,
-    Short,
-}
+use tradeterm::types::{Config,Candle,Signal};
+use tradeterm::strategy;
 
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
@@ -155,23 +43,24 @@ async fn get_candles(config: &Config) -> Result<Vec<Candle>, reqwest::Error> {
     let data: Vec<Vec<Value>> = serde_json::from_str(&res).unwrap();
     let candle_vec = data
         .iter()
-        .map(|row| Candle {
-            timestamp: row[0].as_u64().unwrap_or(0),
-            open: row[1].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
-            high: row[2].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
-            low: row[3].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
-            close: row[4].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
-            volume: row[5].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
-        })
+        .map(|row| Candle::new(
+             row[0].as_u64().unwrap_or(0),
+             row[1].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+             row[2].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+             row[3].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+             row[4].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+             row[5].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+        ))
         .collect::<Vec<Candle>>();
     Ok(candle_vec)
 }
 
 fn process_ticks(candles: &Vec<Candle>, strategy_name:String) -> Signal {
-
-    println!("last:{:#?}", &candles);
-
-    let signal: Signal = Signal::Sleep;
+    let signal = match strategy_name.to_lowercase().as_str(){
+        "exs" => strategy::exs(candles),
+         _ => Signal::Sleep
+    };
+    println!("Last candle:\n{:#?} \nSignal: \t{:#?}", &candles.last(),&signal);
     signal
 }
 
