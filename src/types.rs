@@ -77,7 +77,7 @@ impl Candle {
     }
     // only for testing purposes
     pub fn zeros() -> Candle {
-        /// Creates candle with all values set to zero
+        // Creates candle with all values set to zero
         Candle {
             timestamp: 0,
             open: 0.0,
@@ -104,6 +104,83 @@ impl Candle {
     }
     pub fn volume(&self) -> f64 {
         self.volume
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CandleLine {
+    data: Vec<Candle>,
+}
+
+impl CandleLine {
+    pub fn new() -> CandleLine {
+        // Create new empty candleline
+        CandleLine {
+            data: Vec::<Candle>::new(),
+        }
+    }
+    pub fn get(&self, index: usize) -> Candle {
+        // Return candle with given index
+        self.data[index]
+    }
+    pub fn get_range(&mut self, start_index: usize, end_index: usize) -> Vec<Candle> {
+        // Return candle with given index
+        if start_index > end_index {
+            let temp = &mut self.data.clone()[end_index..start_index];
+            temp.reverse();
+            temp.to_vec()
+        } else {
+            self.data[start_index..end_index].to_vec()
+        }
+    }
+    pub fn first(&self) -> Candle {
+        // Return first candle
+        self.data[0]
+    }
+    pub fn last(&self) -> Candle {
+        // Return last candle
+        self.data[self.len()-1]
+    }
+    pub fn len(&self) -> usize {
+        // Return number of elements in candleline / length of candleline
+        self.data.len()
+    }
+    pub fn push(&mut self, kline: Candle) {
+        // Add new candle to candleline
+        self.data.push(kline);
+    }
+    pub fn all(&self) -> Vec<Candle> {
+        // Reuturns all candleline as vector of candles
+        self.data.clone()
+    }
+    pub fn timestamps(self) -> Vec<u64> {
+        // Returns vector containing timestamps from all candles
+        self.data.iter().map(|x| x.timestamp).collect::<Vec<u64>>()
+    }
+    pub fn opens(self) -> Vec<f64> {
+        // Returns vector containing open price from all candles
+        self.data.iter().map(|x| x.open).collect::<Vec<f64>>()
+    }
+    pub fn highs(self) -> Vec<f64> {
+        // Returns vector containing high price from all candles
+        self.data.iter().map(|x| x.high).collect::<Vec<f64>>()
+    }
+    pub fn lows(self) -> Vec<f64> {
+        // Returns vector containing low price from all candles
+        self.data.iter().map(|x| x.low).collect::<Vec<f64>>()
+    }
+    pub fn closes(self) -> Vec<f64> {
+        // Returns vector containing close price from all candles
+        self.data.iter().map(|x| x.close).collect::<Vec<f64>>()
+    }
+    pub fn volumes(self) -> Vec<f64> {
+        // Returns vector containing volume from all candles
+        self.data.iter().map(|x| x.volume).collect::<Vec<f64>>()
+    }
+    pub fn new_from_vec(candles: Vec<Candle>) -> CandleLine {
+        CandleLine {
+            data: candles
+        }
     }
 }
 

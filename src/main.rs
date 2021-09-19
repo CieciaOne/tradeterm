@@ -1,8 +1,8 @@
-#![allow(dead_code, unused_doc_comments)]
+//#![allow(dead_code, unused_doc_comments)]
 use reqwest::{self, Client};
-use serde::{Deserialize, Serialize};
+//use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
-use std::time::{Duration, Instant};
+//use std::time::{Duration, Instant};
 use tungstenite::{connect, Message};
 
 use tradeterm::types::{Config,Candle,Signal};
@@ -60,7 +60,7 @@ fn process_ticks(candles: &Vec<Candle>, strategy_name:String) -> Signal {
         "exs" => strategy::exs(candles),
          _ => Signal::Sleep
     };
-    println!("Last candle:\n{:#?} \nSignal: \t{:#?}", &candles.last(),&signal);
+    //println!("Last candle:\n{:#?} \nSignal: \t{:#?}", &candles.last(),&signal);
     signal
 }
 
@@ -95,7 +95,8 @@ async fn trade_live(cfg: &Config, mut candles: Vec<Candle>) {
 
                 // Only if Message is correct (no errors)
                 if msg.get("e") != None {
-                    let t_new = Instant::now();
+                    // Measure time of processing
+                    // let t_new = Instant::now();
                     // Creating new candle from data acquired
                     let new_candle = Candle::new(
                         candle["t"].as_u64().unwrap(),
