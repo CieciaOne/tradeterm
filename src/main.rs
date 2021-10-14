@@ -2,7 +2,7 @@
 use reqwest::{self, Client};
 //use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
-//use std::time::{Duration, Instant};
+use std::time::{Duration, Instant};
 use tungstenite::{connect, Message};
 
 use tradeterm::types::{Config,Candle,Signal};
@@ -14,25 +14,24 @@ async fn main() -> Result<(), reqwest::Error> {
         "def_cfg".to_string(),
         "This is a default config for development purposes".to_string(),
         "BTCUSDT".to_string(),
-        "5m".to_string(),
-        16,
-        0,
+        "1m".to_string(),
+        32,
         "ExS".to_string(),
+        "wss://stream.binance.com:9443/ws".to_string(),
+        "https://api.binance.com/api/v3/klines".to_string()
     );
 
-    let candles = get_candles(&config).await?;
-
-    trade_live(&config, candles).await;
-
+    backtrade(&config).await;
+    //trade_live(&config).await;
     Ok(())
 }
 
-async fn get_candles(config: &Config) -> Result<Vec<Candle>, reqwest::Error> {
+async fn get_candles(cfg: &Config) -> Result<Vec<Candle>, reqwest::Error> {
     let client = Client::new();
     let payload = json!({
-        "symbol":config.get_ticker().to_uppercase(),"interval":config.get_timeframe(),"limit":500});
+        "symbol":cfg.get_ticker().to_uppercase(),"interval":cfg.get_timeframe(),"limit":500});
     let res = client
-        .get("https://api.binance.com/api/v3/klines")
+        .get(cfg.get_api_url())
         .query(&payload)
         .send()
         .await?
@@ -55,7 +54,7 @@ async fn get_candles(config: &Config) -> Result<Vec<Candle>, reqwest::Error> {
     Ok(candle_vec)
 }
 
-fn process_ticks(candles: &Vec<Candle>, strategy_name:String) -> Signal {
+fn process(candles: &Vec<Candle>, strategy_name:String) -> Signal {
     let signal = match strategy_name.to_lowercase().as_str(){
         "exs" => strategy::exs(candles),
          _ => Signal::Sleep
@@ -64,26 +63,48 @@ fn process_ticks(candles: &Vec<Candle>, strategy_name:String) -> Signal {
     signal
 }
 
-async fn trade_live(cfg: &Config, mut candles: Vec<Candle>) {
-    // Use prefetched Candles
-    // Connecting to websocket API and then processing data from it to generate signals
-
-    let (mut socket, response) =
-        connect("wss://stream.binance.com:9443/ws").expect("Cannot connect");
-
-    // Status display
-    println!("Connected with status: {}", response.status());
-    for (ref header, _value) in response.headers() {
-        println!("* {}", header);
+async fn backtrade(cfg: &Config) {
+    let candles = get_candles(&cfg).await.unwrap();
+    let mut signals:Vec<Signal> = vec!();
+    let now = Instant::now();
+    for index in 0..candles.len() {
+        //let n = Instant::now();
+        // FIX THIS TRASH U CUNT, THY SHALL USE INDEX OL'MIGHTY -183
+        if &cfg.get_window() > &candles.len() {
+            signals.push(process(&candles.to_vec(),cfg.get_strategy()));
+        } else {
+            if index + &cfg.get_window() <= candles.len(){
+                signals.push(process(&candles[index..&cfg.get_window()+index].to_vec(), cfg.get_strategy()));
+            }
+            else{
+                break;
+            }
+        }
+    //println!("loop in micros{:?}",n.elapsed().as_micros());
     }
+    
+    //println!("{:#?}",signals);
+    //println!("Time in millis{:?}",now.elapsed().as_millis());
 
-    // Create payload to subscribe to websocket
+}
+fn socket_sub_payload(cfg: &Config) -> String {
+
     let payload = json!({"method":"SUBSCRIBE",
     "params":[format!("{}@kline_{}",cfg.get_ticker().to_lowercase(),cfg.get_timeframe())],
     "id":1});
-    let payload_text = serde_json::to_string(&payload).unwrap();
+    serde_json::to_string(&payload).unwrap()
+}
 
-    socket.write_message(Message::Text(payload_text.into())).unwrap();
+async fn trade_live(cfg: &Config) {
+    let mut candles = get_candles(&cfg).await.unwrap();
+
+    let (mut socket, response) =
+        connect(cfg.get_socket_url()).expect("Cannot connect");
+
+    let payload = socket_sub_payload(&cfg);
+
+    socket.write_message(Message::Text(payload.into())).unwrap();
+
     loop {
         match socket.read_message().expect("Error reading message") {
             Message::Text(t) => {
@@ -97,6 +118,7 @@ async fn trade_live(cfg: &Config, mut candles: Vec<Candle>) {
                 if msg.get("e") != None {
                     // Measure time of processing
                     // let t_new = Instant::now();
+
                     // Creating new candle from data acquired
                     let new_candle = Candle::new(
                         candle["t"].as_u64().unwrap(),
@@ -114,14 +136,13 @@ async fn trade_live(cfg: &Config, mut candles: Vec<Candle>) {
                         candles.pop();
                         candles.push(new_candle);
                     }
-
                     // Run processing function on range of candles
                     let mut signal: Signal;
                     if &cfg.get_window() > &candles.len() {
-                        signal = process_ticks(&candles.to_vec(),cfg.get_strategy());
+                        signal = process(&candles.to_vec(),cfg.get_strategy());
                     } else {
                         signal =
-                            process_ticks(&candles[&candles.len() - cfg.get_window()..].to_vec(), cfg.get_strategy());
+                            process(&candles[&candles.len() - cfg.get_window()..].to_vec(), cfg.get_strategy());
                     }
                     //println!("{:?}",&signal);
                     //println!("Message processing took: {} microseconds",t_new.elapsed().as_micros());

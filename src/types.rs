@@ -8,8 +8,9 @@ pub struct Config {
     ticker: String,
     timeframe: String,
     window: usize,
-    shift: i32,
     strategy: String,
+    socket_url: String,
+    api_url: String,
 }
 impl Config {
     pub fn new(
@@ -18,8 +19,9 @@ impl Config {
         ticker: String,
         timeframe: String,
         window: usize,
-        shift: i32,
         strategy: String,
+        socket_url: String,
+        api_url: String,
     ) -> Config {
         Config {
             name: name.to_lowercase(),
@@ -27,8 +29,9 @@ impl Config {
             ticker,
             timeframe,
             window,
-            shift,
             strategy: strategy.to_lowercase(),
+            socket_url,
+            api_url,
         }
     }
     pub fn get_name(&self) -> String {
@@ -46,11 +49,14 @@ impl Config {
     pub fn get_window(&self) -> usize {
         self.window
     }
-    pub fn get_shift(&self) -> i32 {
-        self.shift
-    }
     pub fn get_strategy(&self) -> String {
         self.strategy.clone()
+    }
+    pub fn get_socket_url(&self) -> String {
+        self.socket_url.clone()
+    }
+    pub fn get_api_url(&self) -> String {
+        self.api_url.clone()
     }
 }
 

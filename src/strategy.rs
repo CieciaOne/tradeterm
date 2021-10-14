@@ -2,10 +2,12 @@ use crate::types::{Candle, CandleLine, Signal};
 use std::time::{Duration, Instant};
 
 pub fn exs(candles: &Vec<Candle>) -> Signal {
-    let t_new = Instant::now();
-    let c_new = CandleLine::new_from_vec(candles.clone());
-    println!("New from vec: {} microseconds",t_new.elapsed().as_micros());
-    println!("New:\n{:#?}\n------", c_new.last());
+    //let t = Instant::now();
+    let cline = CandleLine::new_from_vec(candles.clone());
+    let mut ha_cline = cline.heikinashi();
+
+    //println!("Calculating {} bars of heikenashi took: {} microseconds",&candles.len(), t.elapsed().as_micros());
+    println!("{:#?}\n------", ha_cline.get_range(ha_cline.len(),ha_cline.len()-4));
 
     Signal::Long
 }
@@ -16,6 +18,7 @@ impl CandleLine {
         // candles in past to decrease "synthetic" first candle
         let data = self.all();
         let mut ha = CandleLine::new();
+        // Initial candle
         ha.push(Candle::new(
             data[0].timestamp(),
             (data[0].open() + data[0].close()) / 2.0,
@@ -25,6 +28,7 @@ impl CandleLine {
             data[0].volume(),
         ));
 
+        // Add all remaining candles
         for i in 1..data.len() {
             let kline = Candle::new(
                 data[i].timestamp(),
