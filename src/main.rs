@@ -2,11 +2,11 @@
 use reqwest::{self, Client};
 //use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
-use std::time::{Duration, Instant};
+//use std::time::{Duration, Instant};
 use tungstenite::{connect, Message};
 
-use tradeterm::types::{Config,Candle,Signal};
 use tradeterm::strategy;
+use tradeterm::types::{Candle, Config, Signal, Market};
 
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
@@ -18,7 +18,7 @@ async fn main() -> Result<(), reqwest::Error> {
         32,
         "ExS".to_string(),
         "wss://stream.binance.com:9443/ws".to_string(),
-        "https://api.binance.com/api/v3/klines".to_string()
+        "https://api.binance.com/api/v3/klines".to_string(),
     );
 
     backtrade(&config).await;
@@ -42,53 +42,57 @@ async fn get_candles(cfg: &Config) -> Result<Vec<Candle>, reqwest::Error> {
     let data: Vec<Vec<Value>> = serde_json::from_str(&res).unwrap();
     let candle_vec = data
         .iter()
-        .map(|row| Candle::new(
-             row[0].as_u64().unwrap_or(0),
-             row[1].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
-             row[2].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
-             row[3].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
-             row[4].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
-             row[5].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
-        ))
+        .map(|row| {
+            Candle::new(
+                row[0].as_u64().unwrap_or(0),
+                row[1].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+                row[2].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+                row[3].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+                row[4].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+                row[5].as_str().unwrap().parse::<f64>().unwrap_or(0.0),
+            )
+        })
         .collect::<Vec<Candle>>();
     Ok(candle_vec)
 }
 
-fn process(candles: &Vec<Candle>, strategy_name:String) -> Signal {
-    let signal = match strategy_name.to_lowercase().as_str(){
+fn process(candles: &Vec<Candle>, strategy_name: String) -> Signal {
+    let signal = match strategy_name.to_lowercase().as_str() {
         "exs" => strategy::exs(candles),
-         _ => Signal::Sleep
+        _ => Signal::Sleep,
     };
     //println!("Last candle:\n{:#?} \nSignal: \t{:#?}", &candles.last(),&signal);
     signal
 }
 
 async fn backtrade(cfg: &Config) {
+    let mut market = Market::new(0.0,100.0,1.0,0.001);
+
     let candles = get_candles(&cfg).await.unwrap();
-    let mut signals:Vec<Signal> = vec!();
-    let now = Instant::now();
+    let mut signals: Vec<Signal> = vec![];
+    //let now = Instant::now();
     for index in 0..candles.len() {
         //let n = Instant::now();
-        // FIX THIS TRASH U CUNT, THY SHALL USE INDEX OL'MIGHTY -183
         if &cfg.get_window() > &candles.len() {
-            signals.push(process(&candles.to_vec(),cfg.get_strategy()));
+            market.update_ratio(candles.last().unwrap().close());
+            signals.push(process(&candles.to_vec(), cfg.get_strategy()));
         } else {
-            if index + &cfg.get_window() <= candles.len(){
-                signals.push(process(&candles[index..&cfg.get_window()+index].to_vec(), cfg.get_strategy()));
-            }
-            else{
+            if index + &cfg.get_window() <= candles.len() {
+                signals.push(process(
+                    &candles[index..&cfg.get_window() + index].to_vec(),
+                    cfg.get_strategy(),
+                ));
+            } else {
                 break;
             }
         }
-    //println!("loop in micros{:?}",n.elapsed().as_micros());
+        //println!("loop in micros{:?}",n.elapsed().as_micros());
     }
-    
+
     //println!("{:#?}",signals);
     //println!("Time in millis{:?}",now.elapsed().as_millis());
-
 }
 fn socket_sub_payload(cfg: &Config) -> String {
-
     let payload = json!({"method":"SUBSCRIBE",
     "params":[format!("{}@kline_{}",cfg.get_ticker().to_lowercase(),cfg.get_timeframe())],
     "id":1});
@@ -98,8 +102,7 @@ fn socket_sub_payload(cfg: &Config) -> String {
 async fn trade_live(cfg: &Config) {
     let mut candles = get_candles(&cfg).await.unwrap();
 
-    let (mut socket, response) =
-        connect(cfg.get_socket_url()).expect("Cannot connect");
+    let (mut socket, response) = connect(cfg.get_socket_url()).expect("Cannot connect");
 
     let payload = socket_sub_payload(&cfg);
 
@@ -139,10 +142,12 @@ async fn trade_live(cfg: &Config) {
                     // Run processing function on range of candles
                     let mut signal: Signal;
                     if &cfg.get_window() > &candles.len() {
-                        signal = process(&candles.to_vec(),cfg.get_strategy());
+                        signal = process(&candles.to_vec(), cfg.get_strategy());
                     } else {
-                        signal =
-                            process(&candles[&candles.len() - cfg.get_window()..].to_vec(), cfg.get_strategy());
+                        signal = process(
+                            &candles[&candles.len() - cfg.get_window()..].to_vec(),
+                            cfg.get_strategy(),
+                        );
                     }
                     //println!("{:?}",&signal);
                     //println!("Message processing took: {} microseconds",t_new.elapsed().as_micros());
@@ -154,4 +159,3 @@ async fn trade_live(cfg: &Config) {
         };
     }
 }
-

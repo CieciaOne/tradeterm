@@ -211,3 +211,71 @@ impl Strategy {
     }
 }
 */
+
+#[derive(Debug, Clone, Copy)]
+pub struct Market {
+    currency_a_amount: f64,
+    currency_b_amount: f64,
+    ratio_a_to_b: f64,
+    ratio_b_to_a: f64,
+    transaction_fee: f64,
+}
+impl Market {
+    pub fn new(
+        currency_a_amount: f64,
+        currency_b_amount: f64,
+        ratio_a_to_b: f64,
+        transaction_fee: f64,
+    ) -> Market {
+        let ratio_b_to_a = 1.0 / &ratio_a_to_b;
+        Market {
+            currency_a_amount,
+            currency_b_amount,
+            ratio_a_to_b,
+            ratio_b_to_a,
+            transaction_fee,
+        }
+    }
+    pub fn update_ratio(&mut self, ratio:f64) {
+        self.ratio_a_to_b = ratio;
+        self.ratio_b_to_a = 1.0/ratio;
+    }
+    pub fn set_fee(&mut self, fee:f64) {
+        self.transaction_fee = fee;
+    }
+    pub fn buy(&mut self, amount: f64) {
+        if &amount >= &0.0 && &amount * self.ratio_a_to_b <= self.currency_b_amount {
+            self.currency_a_amount += amount * (1.0 - self.transaction_fee);
+            self.currency_b_amount -= amount * self.ratio_a_to_b;
+        } else {
+            println!("Given value exceeds allowed range");
+        }
+    }
+    pub fn sell(&mut self, amount: f64) {
+        if &amount >= &0.0 && &amount <= &self.currency_a_amount {
+            self.currency_a_amount -= amount;
+            self.currency_b_amount += amount * self.ratio_a_to_b * (1.0 - self.transaction_fee);
+        } else {
+            println!("Given value exceeds allowed range");
+        }
+    }
+}
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn market_buy_sell() {
+        let mut market = Market::new(0.0, 100.0, 4.0, 0.001);
+        println!("{:#?}", &market);
+        market.buy(10.0);
+        market.sell(1.0);
+        market.sell(9.0);
+        market.buy(99999.999);
+        market.buy(-123.0);
+        market.sell(99999.999);
+        market.sell(-123.0);
+        println!("{:#?}", &market);
+    }
+}
+
