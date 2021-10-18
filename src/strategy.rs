@@ -3,11 +3,12 @@ use std::time::{Duration, Instant};
 
 pub fn exs(candles: &Vec<Candle>) -> Signal {
     //let t = Instant::now();
-    let cline = CandleLine::new_from_vec(candles.clone());
+    let mut cline = CandleLine::new_from_vec(candles.clone());
     let mut ha_cline = cline.heikinashi();
 
     //println!("Calculating {} bars of heikenashi took: {} microseconds",&candles.len(), t.elapsed().as_micros());
-    println!("{:#?}\n------", ha_cline.get_range(ha_cline.len(),ha_cline.len()-4));
+    println!("{:#?}\n...", ha_cline.get_range(ha_cline.len()-4,ha_cline.len()));
+    println!("{:#?}\n------", cline.get_range(cline.len()-4,cline.len()));
 
     Signal::Long
 }

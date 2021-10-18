@@ -74,7 +74,7 @@ async fn backtrade(cfg: &Config) {
             signals.push(process(&candles.to_vec(),cfg.get_strategy()));
         } else {
             if index + &cfg.get_window() <= candles.len(){
-                signals.push(process(&candles[index..&cfg.get_window()+index].to_vec(), cfg.get_strategy()));
+                signals.push(process(&candles[index..index+&cfg.get_window()].to_vec(), cfg.get_strategy()));
             }
             else{
                 break;
