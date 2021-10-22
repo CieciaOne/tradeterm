@@ -47,6 +47,14 @@ impl CandleLine {
     }
 }
 
+pub fn cross_over(a: Vec<f64>, b: Vec<f64>) -> bool {
+    if (a[0] <= b[0]) & (a[1] > b[1]) {
+        true
+    } else {
+        false
+    }
+}
+
 pub fn moving_average(data: Vec<f64>, window: usize) -> Vec<f64> {
     let mut result: Vec<f64> = Vec::new();
 

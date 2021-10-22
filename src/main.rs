@@ -6,7 +6,7 @@ use serde_json::{self, json, Value};
 use tungstenite::{connect, Message};
 
 use tradeterm::strategy;
-use tradeterm::types::{Candle, Config, Signal, Market};
+use tradeterm::types::{Candle, Config, Market, Signal};
 
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
@@ -20,8 +20,9 @@ async fn main() -> Result<(), reqwest::Error> {
         "wss://stream.binance.com:9443/ws".to_string(),
         "https://api.binance.com/api/v3/klines".to_string(),
     );
+    let mut market = Market::new(0.0, 10000.0, 1.0, 0.001);
 
-    backtrade(&config).await;
+    backtrade(&config, &mut market).await;
     //trade_live(&config).await;
     Ok(())
 }
@@ -65,9 +66,7 @@ fn process(candles: &Vec<Candle>, strategy_name: String) -> Signal {
     signal
 }
 
-async fn backtrade(cfg: &Config) {
-    let mut market = Market::new(0.0,100.0,1.0,0.001);
-
+async fn backtrade(cfg: &Config, market: &mut Market) {
     let candles = get_candles(&cfg).await.unwrap();
     let mut signals: Vec<Signal> = vec![];
     //let now = Instant::now();
@@ -86,6 +85,12 @@ async fn backtrade(cfg: &Config) {
                 break;
             }
         }
+        match signals.last().unwrap() {
+            Signal::Long => market.buy(1.0),
+            Signal::Short => market.sell(1.0),
+            Signal::Sleep => (),
+        }
+        println!("{:?}", &market);
         //println!("loop in micros{:?}",n.elapsed().as_micros());
     }
 
@@ -140,7 +145,7 @@ async fn trade_live(cfg: &Config) {
                         candles.push(new_candle);
                     }
                     // Run processing function on range of candles
-                    let mut signal: Signal;
+                    let signal: Signal;
                     if &cfg.get_window() > &candles.len() {
                         signal = process(&candles.to_vec(), cfg.get_strategy());
                     } else {

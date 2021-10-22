@@ -125,9 +125,13 @@ impl CandleLine {
             data: Vec::<Candle>::new(),
         }
     }
-    pub fn get(&self, index: usize) -> Candle {
+    pub fn get(&self, index: isize) -> Candle {
         // Return candle with given index
-        self.data[index]
+        if index >= 0 {
+            self.data[index as usize]
+        } else {
+            self.data[(self.len() as isize - index) as usize]
+        }
     }
     pub fn get_range(&mut self, start_index: usize, end_index: usize) -> Vec<Candle> {
         // Return candle with given index
@@ -145,7 +149,7 @@ impl CandleLine {
     }
     pub fn last(&self) -> Candle {
         // Return last candle
-        self.data[self.len()-1]
+        self.data[self.len() - 1]
     }
     pub fn len(&self) -> usize {
         // Return number of elements in candleline / length of candleline
@@ -184,9 +188,7 @@ impl CandleLine {
         self.data.iter().map(|x| x.volume).collect::<Vec<f64>>()
     }
     pub fn new_from_vec(candles: Vec<Candle>) -> CandleLine {
-        CandleLine {
-            data: candles
-        }
+        CandleLine { data: candles }
     }
 }
 
@@ -236,11 +238,11 @@ impl Market {
             transaction_fee,
         }
     }
-    pub fn update_ratio(&mut self, ratio:f64) {
+    pub fn update_ratio(&mut self, ratio: f64) {
         self.ratio_a_to_b = ratio;
-        self.ratio_b_to_a = 1.0/ratio;
+        self.ratio_b_to_a = 1.0 / ratio;
     }
-    pub fn set_fee(&mut self, fee:f64) {
+    pub fn set_fee(&mut self, fee: f64) {
         self.transaction_fee = fee;
     }
     pub fn buy(&mut self, amount: f64) {
@@ -278,4 +280,3 @@ mod test {
         println!("{:#?}", &market);
     }
 }
-
