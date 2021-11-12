@@ -125,13 +125,9 @@ impl CandleLine {
             data: Vec::<Candle>::new(),
         }
     }
-    pub fn get(&self, index: isize) -> Candle {
+    pub fn get(&self, index: usize) -> Candle {
         // Return candle with given index
-        if index >= 0 {
-            self.data[index as usize]
-        } else {
-            self.data[(self.len() as isize - index) as usize]
-        }
+        self.data[index]
     }
     pub fn get_range(&mut self, start_index: usize, end_index: usize) -> Vec<Candle> {
         // Return candle with given index
@@ -192,27 +188,108 @@ impl CandleLine {
     }
 }
 
-#[derive(Debug, std::cmp::PartialEq)]
+#[derive(Debug, std::cmp::PartialEq, Clone)]
 pub enum Signal {
     Sleep,
     Long,
     Short,
 }
-/*
-#[derive(Debug)]
-pub struct Strategy {
-    name: String,
-    sig_calc: dyn Fn(&Vec<Candle>) -> Signal
+
+#[derive(Debug,Clone)]
+pub struct Journal {
+    entries: Vec<Event>,
 }
-impl Strategy {
-    pub fn new(name:String, sig_calc: dyn Fn(&Vec<Candle>) -> Signal) -> Strategy{
-        Strategy {
-            name,
-            sig_calc
+
+impl Journal {
+    pub fn new() -> Journal {
+        Journal {
+            entries: Vec::new(),
         }
     }
+    pub fn get(self) -> Vec<Event> {
+        self.entries
+    }
 }
-*/
+
+#[derive(Debug,Clone)]
+pub struct Event {
+    timestamp: usize,
+    signal: Signal,
+    market: Market,
+    candle: Option<Candle>,
+}
+impl Event {
+    pub fn new(timestamp: usize, signal: Signal, market: Market, candle: Option<Candle>) -> Event {
+        Event {
+            timestamp,
+            signal: signal.clone(),
+            market: market.clone(),
+            candle: candle.clone(),
+        }
+    }
+    pub fn get_timestamp(&self) -> usize {
+        self.timestamp
+    }
+    pub fn get_signal(&self) -> Signal {
+        self.signal.clone()
+    }
+    pub fn get_market(&self) -> Market {
+        self.market.clone()
+    }
+    pub fn get_candle(&self) -> Option<Candle> {
+        self.candle
+    }
+}
+#[derive(Debug)]
+pub struct Stats {
+    chg_passive: f64,
+    chg_active: f64,
+    avg_in_pos: f64,
+    avg_gain: f64,
+    avg_loss: f64,
+    cum_gain: f64,
+    cum_loss: f64,
+    cum_fees: f64,
+}
+impl Stats {
+    pub fn default() -> Stats {
+        Stats {
+            chg_passive: 0.0,
+            chg_active: 0.0,
+            avg_in_pos: 0.0,
+            avg_gain: 0.0,
+            avg_loss: 0.0,
+            cum_gain: 0.0,
+            cum_loss: 0.0,
+            cum_fees: 0.0,
+        }
+    }
+
+    fn chg_p(&mut self, journal: Journal) {
+        let data = journal.get();
+        let f = data.first();
+        let l = data.last();
+        println!("{:?} {:?}", f, l);
+        self.chg_passive = l.unwrap().get_candle().unwrap().close() - f.unwrap().get_candle().unwrap().open()
+    }
+    fn chg_a(&mut self,journal: Journal) {
+        let f = journal.clone().get().first().unwrap().get_market();
+        let l = journal.clone().get().last().unwrap().get_market();
+
+        if l.get_b_amount() != 0.0 {
+            self.chg_active = (l.get_b_amount() - f.get_b_amount() + l.a_in_b())/f.get_b_amount();
+        }
+        else {
+            self.chg_active = (l.get_b_amount() - f.get_b_amount())/f.get_b_amount();
+        }
+    }
+
+    pub fn calculate(&mut self, journal: Journal) {
+        self.chg_a(journal.clone());
+        self.chg_p(journal.clone());
+    }
+
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Market {
@@ -220,6 +297,8 @@ pub struct Market {
     currency_b_amount: f64,
     ratio_a_to_b: f64,
     ratio_b_to_a: f64,
+    min_a_transaction: f64,
+    min_b_transaction: f64,
     transaction_fee: f64,
 }
 impl Market {
@@ -227,6 +306,8 @@ impl Market {
         currency_a_amount: f64,
         currency_b_amount: f64,
         ratio_a_to_b: f64,
+        min_a_transaction: f64,
+        min_b_transaction: f64,
         transaction_fee: f64,
     ) -> Market {
         let ratio_b_to_a = 1.0 / &ratio_a_to_b;
@@ -235,15 +316,36 @@ impl Market {
             currency_b_amount,
             ratio_a_to_b,
             ratio_b_to_a,
+            min_a_transaction,
+            min_b_transaction,
             transaction_fee,
         }
     }
+    pub fn get_a_amount(&self) -> f64 {
+        self.currency_a_amount
+    }
+    pub fn get_b_amount(&self) -> f64 {
+        self.currency_b_amount
+    }
+    pub fn a_in_b(&self) -> f64 {
+        self.currency_a_amount * self.ratio_a_to_b
+    }
+    pub fn b_in_a(&self) -> f64 {
+        self.currency_b_amount * self.ratio_b_to_a
+    }
+
     pub fn update_ratio(&mut self, ratio: f64) {
         self.ratio_a_to_b = ratio;
         self.ratio_b_to_a = 1.0 / ratio;
     }
     pub fn set_fee(&mut self, fee: f64) {
         self.transaction_fee = fee;
+    }
+    fn min_a_transaction(&self) -> f64 {
+        self.min_a_transaction
+    }
+    fn min_b_transaction(&self) -> f64 {
+        self.min_b_transaction
     }
     pub fn buy(&mut self, amount: f64) {
         if &amount >= &0.0 && &amount * self.ratio_a_to_b <= self.currency_b_amount {
@@ -260,6 +362,15 @@ impl Market {
         } else {
             println!("Given value exceeds allowed range");
         }
+    }
+    pub fn buy_max(&mut self) {
+        let t = self.min_a_transaction() * (self.b_in_a() / self.min_a_transaction()).floor();
+    }
+    pub fn sell_max(&mut self) {
+        if self.get_a_amount() >= self.min_a_transaction() {
+            self.sell(self.get_a_amount());
+        }
+    
     }
 }
 #[cfg(test)]
@@ -278,5 +389,14 @@ mod test {
         market.sell(99999.999);
         market.sell(-123.0);
         println!("{:#?}", &market);
+    }
+
+    #[test]
+    fn conversion() {
+        let mut market = Market::new(0.0, 100.0, 4.0, 0.001);
+
+        println!("\nA={}, A in B={}", market.get_a_amount(), market.a_in_b());
+
+        println!("B={}, B in A={}", market.get_b_amount(), market.b_in_a());
     }
 }

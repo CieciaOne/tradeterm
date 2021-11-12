@@ -7,12 +7,20 @@ pub fn exs(candles: &Vec<Candle>) -> Signal {
     let mut ha_cline = cline.heikinashi();
 
     //println!("Calculating {} bars of heikenashi took: {} microseconds",&candles.len(), t.elapsed().as_micros());
-    println!(
-        "{:#?}\n------",
-        ha_cline.get_range(ha_cline.len(), ha_cline.len() - 4)
-    );
+//    println!(
+//        "{:#?}\n------",
+//        ha_cline.get_range(ha_cline.len(), ha_cline.len() - 4)
+//    );
 
-    Signal::Long
+    if cline.last().close() > ha_cline.last().close(){
+        Signal::Long
+    }
+    else if cline.last().close() < ha_cline.get(ha_cline.len().wrapping_sub(1)).low(){
+        Signal::Short
+    }
+    else{
+        Signal::Sleep
+    }
 }
 
 impl CandleLine {
