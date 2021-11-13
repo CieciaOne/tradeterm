@@ -6,7 +6,7 @@ use serde_json::{self, json, Value};
 use tungstenite::{connect, Message};
 
 use tradeterm::strategy;
-use tradeterm::types::{Candle, Config, Market, Signal};
+use tradeterm::types::{Candle, Config, Event, Journal, Market, Signal, Stats};
 
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
@@ -21,11 +21,11 @@ async fn main() -> Result<(), reqwest::Error> {
         "wss://stream.binance.com:9443/ws".to_string(),
         "https://api.binance.com/api/v3/".to_string(),
     );
-    let ex_info = get_sym_info(&config).await.unwrap();
-    println!("{:#?}", ex_info);
 
-    //let mut market = Market::new(0.0, 10000.0, 1.0, 0.001);
-    //backtrade(&config, &mut market).await;
+    //println!("{:#?}", get_sym_info(&config).await.unwrap());
+
+    let mut market = Market::new(0.0, 10000.0, 1.0, 0.0001, 0.0001, 0.001);
+    backtrade(&config, &mut market).await;
     //trade_live(&config).await;
     Ok(())
 }
@@ -104,6 +104,8 @@ async fn backtrade(cfg: &Config, market: &mut Market) {
     let candles = get_candles(&cfg).await.unwrap();
     let mut signals: Vec<Signal> = vec![];
 
+    let mut journal = Journal::new();
+
     //let now = Instant::now();
     //for index in 0..candles.len() {
     for index in 0..candles.len() {
@@ -126,12 +128,23 @@ async fn backtrade(cfg: &Config, market: &mut Market) {
             Signal::Short => market.sell(market.a_in_b()),
             Signal::Sleep => (),
         }
-        println!("---\n{:#?}\n{:#?}\n---", &market, &candles.get(index));
         //println!("loop in micros{:?}",n.elapsed().as_micros());
+        let e = Event::new(
+            candles[index].timestamp() as usize,
+            signals.last().unwrap().clone(),
+            market.clone(),
+            candles[index],
+        );
+        journal.put(e);
+        println!("---\n{:#?}\n---", &journal.get(index));
     }
+
+    let mut stats = Stats::init();
+    stats.calculate(journal);
+    println!("{:#?}", stats);
     //println!("{:#?}",signals);
     //println!("Time in millis{:?}",now.elapsed().as_millis());
-    println!("Final result{:#?}", &market.a_in_b());
+    println!("Final result{:#?}\nFirst C: {:#?}\nLast C: {:#?}", &market.a_in_b(),&candles.first(),&candles.last());
 }
 
 fn socket_sub_payload(cfg: &Config) -> String {

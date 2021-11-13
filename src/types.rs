@@ -156,7 +156,7 @@ impl CandleLine {
         self.data.push(kline);
     }
     pub fn all(&self) -> Vec<Candle> {
-        // Reuturns all candleline as vector of candles
+        // Returns all candleline as vector of candles
         self.data.clone()
     }
     pub fn timestamps(self) -> Vec<u64> {
@@ -195,7 +195,7 @@ pub enum Signal {
     Short,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Journal {
     entries: Vec<Event>,
 }
@@ -206,20 +206,42 @@ impl Journal {
             entries: Vec::new(),
         }
     }
-    pub fn get(self) -> Vec<Event> {
-        self.entries
+    pub fn put(&mut self, event: Event) {
+        self.entries.push(event);
+    }
+    pub fn get(&self,index: usize) -> Event {
+        self.entries[index].clone()
+    }
+    pub fn get_all(&self) -> Vec<Event> {
+        self.entries.clone()
+    }
+    pub fn get_timestamps(&self) -> Vec<usize> {
+        self.clone()
+            .get_all()
+            .iter()
+            .map(|x| x.get_timestamp())
+            .collect()
+    }
+    pub fn get_signals(&self) -> Vec<Signal> {
+        self.clone().get_all().iter().map(|x| x.get_signal()).collect()
+    }
+    pub fn get_candles(&self) -> Vec<Candle> {
+        self.clone().get_all().iter().map(|x| x.get_candle()).collect()
+    }
+    pub fn get_markets(&self) -> Vec<Market> {
+        self.clone().get_all().iter().map(|x| x.get_market()).collect()
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Event {
     timestamp: usize,
     signal: Signal,
     market: Market,
-    candle: Option<Candle>,
+    candle: Candle,
 }
 impl Event {
-    pub fn new(timestamp: usize, signal: Signal, market: Market, candle: Option<Candle>) -> Event {
+    pub fn new(timestamp: usize, signal: Signal, market: Market, candle: Candle) -> Event {
         Event {
             timestamp,
             signal: signal.clone(),
@@ -236,7 +258,7 @@ impl Event {
     pub fn get_market(&self) -> Market {
         self.market.clone()
     }
-    pub fn get_candle(&self) -> Option<Candle> {
+    pub fn get_candle(&self) -> Candle {
         self.candle
     }
 }
@@ -252,7 +274,7 @@ pub struct Stats {
     cum_fees: f64,
 }
 impl Stats {
-    pub fn default() -> Stats {
+    pub fn init() -> Stats {
         Stats {
             chg_passive: 0.0,
             chg_active: 0.0,
@@ -266,21 +288,21 @@ impl Stats {
     }
 
     fn chg_p(&mut self, journal: Journal) {
-        let data = journal.get();
+        let data = journal.get_all();
         let f = data.first();
         let l = data.last();
-        println!("{:?} {:?}", f, l);
-        self.chg_passive = l.unwrap().get_candle().unwrap().close() - f.unwrap().get_candle().unwrap().open()
+        println!("\n========={:#?} {:#?}\n=========", f, l);
+        self.chg_passive =
+            l.unwrap().get_candle().close() - f.unwrap().get_candle().open()
     }
-    fn chg_a(&mut self,journal: Journal) {
-        let f = journal.clone().get().first().unwrap().get_market();
-        let l = journal.clone().get().last().unwrap().get_market();
+    fn chg_a(&mut self, journal: Journal) {
+        let f = *journal.get_markets().first().unwrap();
+        let l = *journal.get_markets().last().unwrap();
 
         if l.get_b_amount() != 0.0 {
-            self.chg_active = (l.get_b_amount() - f.get_b_amount() + l.a_in_b())/f.get_b_amount();
-        }
-        else {
-            self.chg_active = (l.get_b_amount() - f.get_b_amount())/f.get_b_amount();
+            self.chg_active = (l.get_b_amount() - f.get_b_amount() + l.a_in_b()) / f.get_b_amount();
+        } else {
+            self.chg_active = (l.get_b_amount() - f.get_b_amount()) / f.get_b_amount();
         }
     }
 
@@ -288,7 +310,6 @@ impl Stats {
         self.chg_a(journal.clone());
         self.chg_p(journal.clone());
     }
-
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -370,7 +391,6 @@ impl Market {
         if self.get_a_amount() >= self.min_a_transaction() {
             self.sell(self.get_a_amount());
         }
-    
     }
 }
 #[cfg(test)]
