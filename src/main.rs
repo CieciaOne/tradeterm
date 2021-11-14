@@ -6,10 +6,11 @@ use serde_json::{self, json, Value};
 use tungstenite::{connect, Message};
 
 use tradeterm::strategy;
-use tradeterm::types::{Candle, Config, Signal, Market};
+use tradeterm::types::{Candle, Config, Event, Journal, Market, Signal, Stats};
 
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
+    // get information abour exchange
     let config = Config::new(
         "def_cfg".to_string(),
         "This is a default config for development purposes".to_string(),
@@ -18,20 +19,55 @@ async fn main() -> Result<(), reqwest::Error> {
         32,
         "ExS".to_string(),
         "wss://stream.binance.com:9443/ws".to_string(),
-        "https://api.binance.com/api/v3/klines".to_string(),
+        "https://api.binance.com/api/v3/".to_string(),
     );
 
-    backtrade(&config).await;
+    //println!("{:#?}", get_sym_info(&config).await.unwrap());
+
+    let mut market = Market::new(0.0, 10000.0, 1.0, 0.0001, 0.0001, 0.001);
+    backtrade(&config, &mut market).await;
     //trade_live(&config).await;
     Ok(())
 }
 
+async fn get_sym_info(cfg: &Config) -> Result<Value, reqwest::Error> {
+    let client = Client::new();
+    let payload = json!({
+            "symbol":cfg.get_ticker().to_uppercase()});
+    let res = client
+        .get(cfg.get_api_url() + "exchangeInfo")
+        .query(&payload)
+        .send()
+        .await?
+        .text()
+        .await?;
+    let data: Value = serde_json::from_str(&res).unwrap();
+    Ok(data)
+}
+
+async fn get_ex_info(cfg: &Config) -> Result<Value, reqwest::Error> {
+    let client = Client::new();
+    let res = client
+        .get(cfg.get_api_url() + "exchangeInfo")
+        //.query(&payload)
+        .send()
+        .await?
+        .text()
+        .await?;
+    let data: Value = serde_json::from_str(&res).unwrap();
+    Ok(data)
+}
+enum Scope {
+    Limit(usize),
+    Range(usize,usize),
+}
+// Parse from Value object to matrix of floats
 async fn get_candles(cfg: &Config) -> Result<Vec<Candle>, reqwest::Error> {
     let client = Client::new();
     let payload = json!({
-        "symbol":cfg.get_ticker().to_uppercase(),"interval":cfg.get_timeframe(),"limit":500});
+        "symbol":cfg.get_ticker().to_uppercase(),"interval":cfg.get_timeframe(),"limit":50});
     let res = client
-        .get(cfg.get_api_url())
+        .get(cfg.get_api_url() + "klines")
         .query(&payload)
         .send()
         .await?
@@ -65,16 +101,18 @@ fn process(candles: &Vec<Candle>, strategy_name: String) -> Signal {
     signal
 }
 
-async fn backtrade(cfg: &Config) {
-    let mut market = Market::new(0.0,100.0,1.0,0.001);
-
+async fn backtrade(cfg: &Config, market: &mut Market) {
     let candles = get_candles(&cfg).await.unwrap();
     let mut signals: Vec<Signal> = vec![];
+
+    let mut journal = Journal::new();
+
     //let now = Instant::now();
+    //for index in 0..candles.len() {
     for index in 0..candles.len() {
         //let n = Instant::now();
+        market.update_ratio(candles.get(index).unwrap().close());
         if &cfg.get_window() > &candles.len() {
-            market.update_ratio(candles.last().unwrap().close());
             signals.push(process(&candles.to_vec(), cfg.get_strategy()));
         } else {
             if index + &cfg.get_window() <= candles.len() {
@@ -82,16 +120,33 @@ async fn backtrade(cfg: &Config) {
                     &candles[index..&cfg.get_window() + index].to_vec(),
                     cfg.get_strategy(),
                 ));
-            } else {
-                break;
             }
         }
+        match signals.last().unwrap() {
+            Signal::Long => market.buy(market.b_in_a()),
+            Signal::Short => market.sell(market.a_in_b()),
+            Signal::Sleep => (),
+        }
         //println!("loop in micros{:?}",n.elapsed().as_micros());
+
+        let e = Event::new(
+            candles[index].timestamp() as usize,
+            signals.last().unwrap().clone(),
+            market.clone(),
+            candles[index],
+        );
+        journal.put(e);
+        println!("---\n{:#?}\n---", &journal.get(index));
     }
 
+    let mut stats = Stats::init();
+    stats.calculate(journal);
+    println!("{:#?}", stats);
     //println!("{:#?}",signals);
     //println!("Time in millis{:?}",now.elapsed().as_millis());
+    println!("Final result{:#?}\nFirst C: {:#?}\nLast C: {:#?}", &market.a_in_b(),&candles.first(),&candles.last());
 }
+
 fn socket_sub_payload(cfg: &Config) -> String {
     let payload = json!({"method":"SUBSCRIBE",
     "params":[format!("{}@kline_{}",cfg.get_ticker().to_lowercase(),cfg.get_timeframe())],
@@ -99,10 +154,10 @@ fn socket_sub_payload(cfg: &Config) -> String {
     serde_json::to_string(&payload).unwrap()
 }
 
-async fn trade_live(cfg: &Config) {
+async fn trade_live(cfg: &Config, market: &Market) {
     let mut candles = get_candles(&cfg).await.unwrap();
 
-    let (mut socket, response) = connect(cfg.get_socket_url()).expect("Cannot connect");
+    let (mut socket, _response) = connect(cfg.get_socket_url()).expect("Cannot connect");
 
     let payload = socket_sub_payload(&cfg);
 
@@ -140,7 +195,7 @@ async fn trade_live(cfg: &Config) {
                         candles.push(new_candle);
                     }
                     // Run processing function on range of candles
-                    let mut signal: Signal;
+                    let signal: Signal;
                     if &cfg.get_window() > &candles.len() {
                         signal = process(&candles.to_vec(), cfg.get_strategy());
                     } else {
