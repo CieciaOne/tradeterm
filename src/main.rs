@@ -47,8 +47,6 @@ async fn get_sym_info(cfg: &Config) -> Result<Value, reqwest::Error> {
 
 async fn get_ex_info(cfg: &Config) -> Result<Value, reqwest::Error> {
     let client = Client::new();
-    //    let payload = json!({
-    //        "symbol":cfg.get_ticker().to_uppercase(),"interval":cfg.get_timeframe(),"limit":500});
     let res = client
         .get(cfg.get_api_url() + "exchangeInfo")
         //.query(&payload)
@@ -59,12 +57,15 @@ async fn get_ex_info(cfg: &Config) -> Result<Value, reqwest::Error> {
     let data: Value = serde_json::from_str(&res).unwrap();
     Ok(data)
 }
-
+enum Scope {
+    Limit(usize),
+    Range(usize,usize),
+}
 // Parse from Value object to matrix of floats
 async fn get_candles(cfg: &Config) -> Result<Vec<Candle>, reqwest::Error> {
     let client = Client::new();
     let payload = json!({
-        "symbol":cfg.get_ticker().to_uppercase(),"interval":cfg.get_timeframe(),"limit":500});
+        "symbol":cfg.get_ticker().to_uppercase(),"interval":cfg.get_timeframe(),"limit":50});
     let res = client
         .get(cfg.get_api_url() + "klines")
         .query(&payload)
@@ -119,8 +120,6 @@ async fn backtrade(cfg: &Config, market: &mut Market) {
                     &candles[index..&cfg.get_window() + index].to_vec(),
                     cfg.get_strategy(),
                 ));
-            } else {
-                break;
             }
         }
         match signals.last().unwrap() {
@@ -129,6 +128,7 @@ async fn backtrade(cfg: &Config, market: &mut Market) {
             Signal::Sleep => (),
         }
         //println!("loop in micros{:?}",n.elapsed().as_micros());
+
         let e = Event::new(
             candles[index].timestamp() as usize,
             signals.last().unwrap().clone(),

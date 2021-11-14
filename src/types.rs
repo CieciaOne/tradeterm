@@ -287,28 +287,48 @@ impl Stats {
         }
     }
 
-    fn chg_p(&mut self, journal: Journal) {
+    fn calc_chg_p(&mut self, journal: Journal) {
         let data = journal.get_all();
         let f = data.first();
         let l = data.last();
-        println!("\n========={:#?} {:#?}\n=========", f, l);
+        //println!("\n========={:#?} {:#?}\n=========", f, l);
         self.chg_passive =
-            l.unwrap().get_candle().close() - f.unwrap().get_candle().open()
+            (l.unwrap().get_candle().close() - f.unwrap().get_candle().open()) / l.unwrap().get_candle().close()
     }
-    fn chg_a(&mut self, journal: Journal) {
+    fn calc_chg_a(&mut self, journal: Journal) {
         let f = *journal.get_markets().first().unwrap();
         let l = *journal.get_markets().last().unwrap();
 
-        if l.get_b_amount() != 0.0 {
+        if l.get_b_amount() == 0.0 {
+            println!("=0 -> {0} - {1} + {2} / {1}",l.get_b_amount(), f.get_b_amount(),l.a_in_b());
             self.chg_active = (l.get_b_amount() - f.get_b_amount() + l.a_in_b()) / f.get_b_amount();
         } else {
+            println!("!=0 -> {0} - {1} / {1}",l.get_b_amount(), f.get_b_amount());
             self.chg_active = (l.get_b_amount() - f.get_b_amount()) / f.get_b_amount();
         }
     }
+    fn calc_avg_in_pos(&mut self,journal: Journal) {
+    }
+    fn calc_avg_gain(&mut self,journal: Journal) {
+    }
+    fn calc_avg_loss(&mut self,journal: Journal) {
+    }
+    fn calc_cum_gain(&mut self,journal: Journal) {
+    }
+    fn calc_cum_loss(&mut self,journal: Journal) {
+    }
+    fn calc_cum_fees(&mut self,journal: Journal) {
+    }
 
     pub fn calculate(&mut self, journal: Journal) {
-        self.chg_a(journal.clone());
-        self.chg_p(journal.clone());
+        self.calc_chg_a(journal.clone());
+        self.calc_chg_p(journal.clone());
+        self.calc_avg_in_pos(journal.clone());
+        self.calc_avg_gain(journal.clone());
+        self.calc_avg_loss(journal.clone());
+        self.calc_cum_gain(journal.clone());
+        self.calc_cum_loss(journal.clone());
+        self.calc_cum_fees(journal.clone());
     }
 }
 
