@@ -1,4 +1,5 @@
-# tradeterm
+# TRADETERM
+**In early development**\
 Terminal based algo-trading solution
 
 ### Things to implement:
