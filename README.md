@@ -12,10 +12,17 @@ Terminal based algo-trading solution
 	- avg in-position time
 	- avg trade gain / loss ABS and %
 	- Cumulative gain / loss ABS and %
-	- Passive change from start
-		In progress, neeed to fix journal not taking whole period lacking newest data?
-	- Active change from start
-		Getting NaNs lol
+	- [x] Passive change from start
+	- [x] Active change from start
 	- amount lost on fees in trades
 
+
+MOST IMPORTANTE RN
+
+Broker integration
+api keys and security
+	move api keys into yaml file or sth else and read it at start
+universal endpoint related functions
+
+Order management & placement
 

@@ -1,6 +1,37 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
 
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Broker {
+    name: String,
+    api_key: String,
+    rest_api_url: String,
+    ws_api_url: String
+}
+impl Broker{
+    pub fn new(name:String, api_key:String,rest_api_url:String,ws_api_url:String) -> Broker{
+        Broker{
+            name:name.to_uppercase(),
+            api_key,
+            rest_api_url,
+            ws_api_url
+        }
+    }
+    pub fn get_name(&self) -> String{
+        self.name.clone()
+    }
+    pub fn get_api_key(&self) -> String{
+        self.api_key.clone()
+    }
+    pub fn get_rest_api_url(&self) -> String{
+        self.rest_api_url.clone()
+    }
+    pub fn get_ws_api_url(&self) -> String{
+        self.ws_api_url.clone()
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     name: String,
@@ -9,8 +40,7 @@ pub struct Config {
     timeframe: String,
     window: usize,
     strategy: String,
-    socket_url: String,
-    api_url: String,
+    broker: Broker
 }
 impl Config {
     pub fn new(
@@ -20,8 +50,7 @@ impl Config {
         timeframe: String,
         window: usize,
         strategy: String,
-        socket_url: String,
-        api_url: String,
+        broker: Broker,
     ) -> Config {
         Config {
             name: name.to_lowercase(),
@@ -30,8 +59,7 @@ impl Config {
             timeframe,
             window,
             strategy: strategy.to_lowercase(),
-            socket_url,
-            api_url,
+            broker
         }
     }
     pub fn get_name(&self) -> String {
@@ -53,10 +81,10 @@ impl Config {
         self.strategy.clone()
     }
     pub fn get_socket_url(&self) -> String {
-        self.socket_url.clone()
+        self.broker.clone().get_ws_api_url()
     }
     pub fn get_api_url(&self) -> String {
-        self.api_url.clone()
+        self.broker.clone().get_rest_api_url()
     }
 }
 
@@ -188,7 +216,7 @@ impl CandleLine {
     }
 }
 
-#[derive(Debug, std::cmp::PartialEq, Clone)]
+#[derive(Debug, std::cmp::PartialEq,Copy, Clone)]
 pub enum Signal {
     Sleep,
     Long,
@@ -209,7 +237,7 @@ impl Journal {
     pub fn put(&mut self, event: Event) {
         self.entries.push(event);
     }
-    pub fn get(&self,index: usize) -> Event {
+    pub fn get(&self, index: usize) -> Event {
         self.entries[index].clone()
     }
     pub fn get_all(&self) -> Vec<Event> {
@@ -223,13 +251,25 @@ impl Journal {
             .collect()
     }
     pub fn get_signals(&self) -> Vec<Signal> {
-        self.clone().get_all().iter().map(|x| x.get_signal()).collect()
+        self.clone()
+            .get_all()
+            .iter()
+            .map(|x| x.get_signal())
+            .collect()
     }
     pub fn get_candles(&self) -> Vec<Candle> {
-        self.clone().get_all().iter().map(|x| x.get_candle()).collect()
+        self.clone()
+            .get_all()
+            .iter()
+            .map(|x| x.get_candle())
+            .collect()
     }
     pub fn get_markets(&self) -> Vec<Market> {
-        self.clone().get_all().iter().map(|x| x.get_market()).collect()
+        self.clone()
+            .get_all()
+            .iter()
+            .map(|x| x.get_market())
+            .collect()
     }
 }
 
@@ -292,33 +332,64 @@ impl Stats {
         let f = data.first();
         let l = data.last();
         //println!("\n========={:#?} {:#?}\n=========", f, l);
-        self.chg_passive =
-            (l.unwrap().get_candle().close() - f.unwrap().get_candle().open()) / l.unwrap().get_candle().close()
+        self.chg_passive = (l.unwrap().get_candle().close() - f.unwrap().get_candle().open())
+            / l.unwrap().get_candle().close()
     }
     fn calc_chg_a(&mut self, journal: Journal) {
         let f = *journal.get_markets().first().unwrap();
         let l = *journal.get_markets().last().unwrap();
-
-        if l.get_b_amount() == 0.0 {
-            println!("=0 -> {0} - {1} + {2} / {1}",l.get_b_amount(), f.get_b_amount(),l.a_in_b());
-            self.chg_active = (l.get_b_amount() - f.get_b_amount() + l.a_in_b()) / f.get_b_amount();
-        } else {
-            println!("!=0 -> {0} - {1} / {1}",l.get_b_amount(), f.get_b_amount());
+        if &f.get_a_amount() != &0.0 && &l.get_a_amount() != &0.0 {
+            println!("1-> {0} - {1} / {1}", l.a_in_b(), f.a_in_b());
+            self.chg_active = (l.a_in_b() - f.a_in_b()) / f.a_in_b();
+        } else if &f.get_b_amount() != &0.0 && &l.get_b_amount() != &0.0 {
+            println!("2-> {0} - {1} / {1}", l.get_b_amount(), f.get_b_amount());
             self.chg_active = (l.get_b_amount() - f.get_b_amount()) / f.get_b_amount();
+        } else if &f.get_a_amount() == &0.0 && &l.get_a_amount() != &0.0 {
+            println!("3-> {0} - {1} / {1}", l.a_in_b(), f.get_b_amount());
+            self.chg_active = (l.a_in_b() - f.get_b_amount()) / f.get_b_amount();
+        } else if &f.get_b_amount() == &0.0 && &l.get_b_amount() != &0.0 {
+            println!("4-> {0} - {1} / {1}", l.get_b_amount(), f.a_in_b());
+            self.chg_active = (l.get_b_amount() - f.a_in_b()) / f.a_in_b();
         }
     }
-    fn calc_avg_in_pos(&mut self,journal: Journal) {
+    //something's wrong I can feel it or more like I see it spews BS
+    fn calc_avg_in_pos(&mut self, journal: Journal) {
+        let mut temp: Vec<usize> = Vec::new();
+        let mut counter: usize = 0;
+        let mut temp_sig = journal.get_signals().first().unwrap().to_owned();
+        println!("{:?}", &journal.get_signals());
+        for sig in journal.get_signals() {
+            if sig == Signal::Sleep || sig == temp_sig {
+                counter += 1;
+            } else {
+                temp_sig = sig;
+                temp.push(counter);
+                counter = 1;
+            }
+            //println!("counter:{:?}\ntemps:{:?}", &counter, &temp);
+        }
+
+        self.avg_in_pos = temp.iter().sum::<usize>() as f64 / temp.len() as f64;
     }
-    fn calc_avg_gain(&mut self,journal: Journal) {
+    
+    fn calc_avg_gain(&mut self, journal: Journal) {
+        let mut temp: Vec<f64> = Vec::new();
+        let (sigs, candles) = (journal.get_signals(), journal.get_candles());
+        let tmp_sig = sigs.first().unwrap();
+        for sig in sigs.iter(){
+            if sig != tmp_sig && sig != &Signal::Sleep {
+
+            }
+            
+
+
+
+        };
     }
-    fn calc_avg_loss(&mut self,journal: Journal) {
-    }
-    fn calc_cum_gain(&mut self,journal: Journal) {
-    }
-    fn calc_cum_loss(&mut self,journal: Journal) {
-    }
-    fn calc_cum_fees(&mut self,journal: Journal) {
-    }
+    fn calc_avg_loss(&mut self, journal: Journal) {}
+    fn calc_cum_gain(&mut self, journal: Journal) {}
+    fn calc_cum_loss(&mut self, journal: Journal) {}
+    fn calc_cum_fees(&mut self, journal: Journal) {}
 
     pub fn calculate(&mut self, journal: Journal) {
         self.calc_chg_a(journal.clone());
@@ -419,24 +490,26 @@ mod test {
 
     #[test]
     fn market_buy_sell() {
-        let mut market = Market::new(0.0, 100.0, 4.0, 0.001);
-        println!("{:#?}", &market);
-        market.buy(10.0);
-        market.sell(1.0);
-        market.sell(9.0);
-        market.buy(99999.999);
-        market.buy(-123.0);
-        market.sell(99999.999);
-        market.sell(-123.0);
-        println!("{:#?}", &market);
+//        let mut market = Market::new(0.0, 100.0, 4.0, 0.001);
+//        println!("{:#?}", &market);
+//        market.buy(10.0);
+//        market.sell(1.0);
+//        market.sell(9.0);
+//        market.buy(99999.999);
+//        market.buy(-123.0);
+//        market.sell(99999.999);
+//        market.sell(-123.0);
+//        println!("{:#?}", &market);
     }
 
     #[test]
     fn conversion() {
+        /*
         let mut market = Market::new(0.0, 100.0, 4.0, 0.001);
 
         println!("\nA={}, A in B={}", market.get_a_amount(), market.a_in_b());
 
         println!("B={}, B in A={}", market.get_b_amount(), market.b_in_a());
+        */
     }
 }

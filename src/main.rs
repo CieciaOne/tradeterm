@@ -6,11 +6,17 @@ use serde_json::{self, json, Value};
 use tungstenite::{connect, Message};
 
 use tradeterm::strategy;
-use tradeterm::types::{Candle, Config, Event, Journal, Market, Signal, Stats};
+use tradeterm::types::{Broker, Candle, Config, Event, Journal, Market, Signal, Stats};
 
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     // get information abour exchange
+    let BINANCE_TESTNET = Broker::new(
+        "BINANCE".to_string(),
+        "api_key".to_string(),
+        "https://api.binance.com/api/v3/".to_string(),
+        "wss://stream.binance.com:9443/ws".to_string(),
+    );
     let config = Config::new(
         "def_cfg".to_string(),
         "This is a default config for development purposes".to_string(),
@@ -18,8 +24,9 @@ async fn main() -> Result<(), reqwest::Error> {
         "1m".to_string(),
         32,
         "ExS".to_string(),
-        "wss://stream.binance.com:9443/ws".to_string(),
-        "https://api.binance.com/api/v3/".to_string(),
+        //"wss://stream.binance.com:9443/ws".to_string(),
+        //"https://api.binance.com/api/v3/".to_string(),
+        BINANCE_TESTNET,
     );
 
     //println!("{:#?}", get_sym_info(&config).await.unwrap());
@@ -59,7 +66,7 @@ async fn get_ex_info(cfg: &Config) -> Result<Value, reqwest::Error> {
 }
 enum Scope {
     Limit(usize),
-    Range(usize,usize),
+    Range(usize, usize),
 }
 // Parse from Value object to matrix of floats
 async fn get_candles(cfg: &Config) -> Result<Vec<Candle>, reqwest::Error> {
@@ -136,7 +143,7 @@ async fn backtrade(cfg: &Config, market: &mut Market) {
             candles[index],
         );
         journal.put(e);
-        println!("---\n{:#?}\n---", &journal.get(index));
+        //println!("---\n{:#?}\n---", &journal.get(index));
     }
 
     let mut stats = Stats::init();
@@ -144,7 +151,12 @@ async fn backtrade(cfg: &Config, market: &mut Market) {
     println!("{:#?}", stats);
     //println!("{:#?}",signals);
     //println!("Time in millis{:?}",now.elapsed().as_millis());
-    println!("Final result{:#?}\nFirst C: {:#?}\nLast C: {:#?}", &market.a_in_b(),&candles.first(),&candles.last());
+    println!(
+        "Final result{:#?}\nFirst C: {:#?}\nLast C: {:#?}",
+        &market.a_in_b(),
+        &candles.first(),
+        &candles.last()
+    );
 }
 
 fn socket_sub_payload(cfg: &Config) -> String {
