@@ -1,33 +1,32 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{self, json, Value};
 
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Broker {
     name: String,
     api_key: String,
     rest_api_url: String,
-    ws_api_url: String
+    ws_api_url: String,
 }
-impl Broker{
-    pub fn new(name:String, api_key:String,rest_api_url:String,ws_api_url:String) -> Broker{
-        Broker{
-            name:name.to_uppercase(),
+impl Broker {
+    pub fn new(name: String, api_key: String, rest_api_url: String, ws_api_url: String) -> Broker {
+        Broker {
+            name: name.to_uppercase(),
             api_key,
             rest_api_url,
-            ws_api_url
+            ws_api_url,
         }
     }
-    pub fn get_name(&self) -> String{
+    pub fn get_name(&self) -> String {
         self.name.clone()
     }
-    pub fn get_api_key(&self) -> String{
+    pub fn get_api_key(&self) -> String {
         self.api_key.clone()
     }
-    pub fn get_rest_api_url(&self) -> String{
+    pub fn get_rest_api_url(&self) -> String {
         self.rest_api_url.clone()
     }
-    pub fn get_ws_api_url(&self) -> String{
+    pub fn get_ws_api_url(&self) -> String {
         self.ws_api_url.clone()
     }
 }
@@ -40,7 +39,7 @@ pub struct Config {
     timeframe: String,
     window: usize,
     strategy: String,
-    broker: Broker
+    broker: Broker,
 }
 impl Config {
     pub fn new(
@@ -59,7 +58,7 @@ impl Config {
             timeframe,
             window,
             strategy: strategy.to_lowercase(),
-            broker
+            broker,
         }
     }
     pub fn get_name(&self) -> String {
@@ -187,27 +186,27 @@ impl CandleLine {
         // Returns all candleline as vector of candles
         self.data.clone()
     }
-    pub fn timestamps(self) -> Vec<u64> {
+    pub fn timestamps(&self) -> Vec<u64> {
         // Returns vector containing timestamps from all candles
         self.data.iter().map(|x| x.timestamp).collect::<Vec<u64>>()
     }
-    pub fn opens(self) -> Vec<f64> {
+    pub fn opens(&self) -> Vec<f64> {
         // Returns vector containing open price from all candles
         self.data.iter().map(|x| x.open).collect::<Vec<f64>>()
     }
-    pub fn highs(self) -> Vec<f64> {
+    pub fn highs(&self) -> Vec<f64> {
         // Returns vector containing high price from all candles
         self.data.iter().map(|x| x.high).collect::<Vec<f64>>()
     }
-    pub fn lows(self) -> Vec<f64> {
+    pub fn lows(&self) -> Vec<f64> {
         // Returns vector containing low price from all candles
         self.data.iter().map(|x| x.low).collect::<Vec<f64>>()
     }
-    pub fn closes(self) -> Vec<f64> {
+    pub fn closes(&self) -> Vec<f64> {
         // Returns vector containing close price from all candles
         self.data.iter().map(|x| x.close).collect::<Vec<f64>>()
     }
-    pub fn volumes(self) -> Vec<f64> {
+    pub fn volumes(&self) -> Vec<f64> {
         // Returns vector containing volume from all candles
         self.data.iter().map(|x| x.volume).collect::<Vec<f64>>()
     }
@@ -216,7 +215,7 @@ impl CandleLine {
     }
 }
 
-#[derive(Debug, std::cmp::PartialEq,Copy, Clone)]
+#[derive(Debug, std::cmp::PartialEq, Copy, Clone)]
 pub enum Signal {
     Sleep,
     Long,
@@ -270,6 +269,98 @@ impl Journal {
             .iter()
             .map(|x| x.get_market())
             .collect()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum OrderSide {
+    BUY,
+    SELL,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum TimeInForce {
+    GTC,
+    IOC,
+    FOK,
+    GTX,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum OrderType {
+    LIMIT,
+    MARKET,
+    STOP_LOSS,
+    STOP_LOSS_LIMIT,
+    TAKE_PROFIT,
+    TAKE_PROFIT_LIMIT,
+    LIMIT_MAKER,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum OrderRespType {
+    ACK,
+    RESULT,
+    FULL,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Order {
+    symbol: String,
+    side: OrderSide,
+    r#type: OrderType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    time_in_force: Option<TimeInForce>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quantity: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quoteOrderQty: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    price: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    newClientOrderId: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stopPrice: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icebergQty: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    new_order_resp_type: Option<OrderRespType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recvWindow: Option<f64>,
+    timestamp: u64,
+}
+impl Order {
+    pub fn new(
+        symbol: String,
+        side: OrderSide,
+        r#type: OrderType,
+        time_in_force: Option<TimeInForce>,
+        quantity: Option<f64>,
+        quoteOrderQty: Option<f64>,
+        price: Option<f64>,
+        newClientOrderId: Option<String>,
+        stopPrice: Option<f64>,
+        icebergQty: Option<f64>,
+        new_order_resp_type: Option<OrderRespType>,
+        recvWindow: Option<f64>,
+        timestamp: u64,
+    ) -> Order {
+        Order {
+            symbol,
+            side,
+            r#type,
+            time_in_force,
+            quantity,
+            quoteOrderQty,
+            price,
+            newClientOrderId,
+            stopPrice,
+            icebergQty,
+            new_order_resp_type,
+            recvWindow,
+            timestamp,
+        }
     }
 }
 
@@ -371,21 +462,16 @@ impl Stats {
 
         self.avg_in_pos = temp.iter().sum::<usize>() as f64 / temp.len() as f64;
     }
-    
+
     fn calc_avg_gain(&mut self, journal: Journal) {
         let mut temp: Vec<f64> = Vec::new();
         let (sigs, candles) = (journal.get_signals(), journal.get_candles());
         let tmp_sig = sigs.first().unwrap();
-        for sig in sigs.iter(){
-            if sig != tmp_sig && sig != &Signal::Sleep {
-
-            }
-            
-
-
-
-        };
+        for sig in sigs.iter() {
+            if sig != tmp_sig && sig != &Signal::Sleep {}
+        }
     }
+// TODO!!
     fn calc_avg_loss(&mut self, journal: Journal) {}
     fn calc_cum_gain(&mut self, journal: Journal) {}
     fn calc_cum_loss(&mut self, journal: Journal) {}
@@ -410,7 +496,7 @@ pub struct Market {
     ratio_a_to_b: f64,
     ratio_b_to_a: f64,
     min_a_transaction: f64,
-    min_b_transaction: f64,
+    step_size: f64,
     transaction_fee: f64,
 }
 impl Market {
@@ -419,7 +505,7 @@ impl Market {
         currency_b_amount: f64,
         ratio_a_to_b: f64,
         min_a_transaction: f64,
-        min_b_transaction: f64,
+        step_size: f64,
         transaction_fee: f64,
     ) -> Market {
         let ratio_b_to_a = 1.0 / &ratio_a_to_b;
@@ -429,7 +515,7 @@ impl Market {
             ratio_a_to_b,
             ratio_b_to_a,
             min_a_transaction,
-            min_b_transaction,
+            step_size,
             transaction_fee,
         }
     }
@@ -453,11 +539,11 @@ impl Market {
     pub fn set_fee(&mut self, fee: f64) {
         self.transaction_fee = fee;
     }
-    fn min_a_transaction(&self) -> f64 {
+    fn get_min_a_transaction(&self) -> f64 {
         self.min_a_transaction
     }
-    fn min_b_transaction(&self) -> f64 {
-        self.min_b_transaction
+    fn get_step_size(&self) -> f64 {
+        self.step_size
     }
     pub fn buy(&mut self, amount: f64) {
         if &amount >= &0.0 && &amount * self.ratio_a_to_b <= self.currency_b_amount {
@@ -476,34 +562,35 @@ impl Market {
         }
     }
     pub fn buy_max(&mut self) {
-        let t = self.min_a_transaction() * (self.b_in_a() / self.min_a_transaction()).floor();
+        let t =
+            self.get_min_a_transaction() * (self.b_in_a() / self.get_min_a_transaction()).floor();
     }
     pub fn sell_max(&mut self) {
-        if self.get_a_amount() >= self.min_a_transaction() {
+        if self.get_a_amount() >= self.get_min_a_transaction() {
             self.sell(self.get_a_amount());
         }
     }
 }
 #[cfg(test)]
 mod test {
-    use super::*;
+    // use super::*;
 
-    #[test]
-    fn market_buy_sell() {
-//        let mut market = Market::new(0.0, 100.0, 4.0, 0.001);
-//        println!("{:#?}", &market);
-//        market.buy(10.0);
-//        market.sell(1.0);
-//        market.sell(9.0);
-//        market.buy(99999.999);
-//        market.buy(-123.0);
-//        market.sell(99999.999);
-//        market.sell(-123.0);
-//        println!("{:#?}", &market);
-    }
+    // #[test]
+    // fn market_buy_sell() {
+        //        let mut market = Market::new(0.0, 100.0, 4.0, 0.001);
+        //        println!("{:#?}", &market);
+        //        market.buy(10.0);
+        //        market.sell(1.0);
+        //        market.sell(9.0);
+        //        market.buy(99999.999);
+        //        market.buy(-123.0);
+        //        market.sell(99999.999);
+        //        market.sell(-123.0);
+        //        println!("{:#?}", &market);
+    // }
 
-    #[test]
-    fn conversion() {
+    // #[test]
+    // fn conversion() {
         /*
         let mut market = Market::new(0.0, 100.0, 4.0, 0.001);
 
@@ -511,5 +598,5 @@ mod test {
 
         println!("B={}, B in A={}", market.get_b_amount(), market.b_in_a());
         */
-    }
+    // }
 }
