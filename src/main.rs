@@ -6,11 +6,27 @@ use serde_json::{self, json, Value};
 use tungstenite::{connect, Message};
 
 use tradeterm::strategy;
-use tradeterm::types::{Candle, Config, Event, Journal, Market, Signal, Stats};
+use tradeterm::types::{Broker, Candle, Config, Event, Journal, Market, Order, Signal, Stats};
+use tradeterm::types::{OrderRespType, OrderSide, OrderType, TimeInForce};
 
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     // get information abour exchange
+
+    let binance = Broker::new(
+        "BINANCE".to_string(),
+        "api_key".to_string(),
+        "https://api.binance.com/api/v3/".to_string(),
+        "wss://stream.binance.com:9443/ws".to_string(),
+    );
+
+    let binance_testnet = Broker::new(
+        "BINANCE".to_string(),
+        "api_key".to_string(),
+        "https://testnet.binance.vision/api".to_string(),
+        "wss://testnet.binance.vision/ws".to_string(),
+    );
+
     let config = Config::new(
         "def_cfg".to_string(),
         "This is a default config for development purposes".to_string(),
@@ -18,16 +34,80 @@ async fn main() -> Result<(), reqwest::Error> {
         "1m".to_string(),
         32,
         "ExS".to_string(),
-        "wss://stream.binance.com:9443/ws".to_string(),
-        "https://api.binance.com/api/v3/".to_string(),
+        binance,
     );
+    // let info = get_sym_info(&config).await.unwrap();
+    // println!(
+    //     "{:#?}",
+    //     info.get("symbols")
+    //         .unwrap()
+    //         .get(0)
+    //         .unwrap()
+    //         .get("filters")
+    //         .unwrap()
+    //         .get(5)
+    //         .unwrap()
+    //         .get("stepSize")
+    //         .unwrap()
+    // );
+    //let step = info.get("symbols").unwrap(); //.get("filters").unwrap().get(4);
+    //let step = info.get("symbols").unwrap().get("filters").unwrap().get(5).unwrap();
 
-    //println!("{:#?}", get_sym_info(&config).await.unwrap());
-
-    let mut market = Market::new(0.0, 10000.0, 1.0, 0.0001, 0.0001, 0.001);
-    backtrade(&config, &mut market).await;
+    let time = get_server_time(&config).await;
+    let test_order = Order::new(
+        "BTCUSDT".to_string(),
+        OrderSide::BUY,
+        OrderType::MARKET,
+        None,
+        Some(0.0001),
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(OrderRespType::FULL),
+        None,
+        time.unwrap(),
+    );
+    let resp = place_order(&config, test_order).await;
+    println!("{:?}", resp);
+    //println!("{:?}", time);
+    //let mut market = Market::new(0.0, 10000.0, 1.0, 0.0001, 0.0001, 0.001);
+    //backtrade(&config, &mut market).await;
     //trade_live(&config).await;
     Ok(())
+}
+
+async fn place_order(cfg: &Config, order: Order) -> Result<Value, reqwest::Error> {
+    let client = Client::new();
+    let payload = json!({
+            "symbol":cfg.get_ticker().to_uppercase()});
+    let res = client
+        .get(cfg.get_api_url() + "exchangeInfo")
+        .query(&payload)
+        .send()
+        .await?
+        .text()
+        .await?;
+    let data: Value = serde_json::from_str(&res).unwrap();
+    Ok(data)
+}
+
+async fn get_server_time(cfg: &Config) -> Result<u64, reqwest::Error> {
+    let client = Client::new();
+    //let payload = json!({
+    //"symbol":cfg.get_ticker().to_uppercase()});
+    let res = client
+        .get(cfg.get_api_url() + "time")
+        //.query(&payload)
+        .send()
+        .await?
+        .text()
+        .await?;
+    println!("{:?}", &res);
+    // let data: Value = serde_json::from_str(&res);
+    // println!("{:?}", data.as_str().unwrap().parse::<u64>().unwrap());
+    Ok(1)
 }
 
 async fn get_sym_info(cfg: &Config) -> Result<Value, reqwest::Error> {
@@ -56,10 +136,6 @@ async fn get_ex_info(cfg: &Config) -> Result<Value, reqwest::Error> {
         .await?;
     let data: Value = serde_json::from_str(&res).unwrap();
     Ok(data)
-}
-enum Scope {
-    Limit(usize),
-    Range(usize,usize),
 }
 // Parse from Value object to matrix of floats
 async fn get_candles(cfg: &Config) -> Result<Vec<Candle>, reqwest::Error> {
@@ -107,10 +183,7 @@ async fn backtrade(cfg: &Config, market: &mut Market) {
 
     let mut journal = Journal::new();
 
-    //let now = Instant::now();
-    //for index in 0..candles.len() {
     for index in 0..candles.len() {
-        //let n = Instant::now();
         market.update_ratio(candles.get(index).unwrap().close());
         if &cfg.get_window() > &candles.len() {
             signals.push(process(&candles.to_vec(), cfg.get_strategy()));
@@ -127,7 +200,6 @@ async fn backtrade(cfg: &Config, market: &mut Market) {
             Signal::Short => market.sell(market.a_in_b()),
             Signal::Sleep => (),
         }
-        //println!("loop in micros{:?}",n.elapsed().as_micros());
 
         let e = Event::new(
             candles[index].timestamp() as usize,
@@ -136,15 +208,17 @@ async fn backtrade(cfg: &Config, market: &mut Market) {
             candles[index],
         );
         journal.put(e);
-        println!("---\n{:#?}\n---", &journal.get(index));
     }
 
     let mut stats = Stats::init();
     stats.calculate(journal);
     println!("{:#?}", stats);
-    //println!("{:#?}",signals);
-    //println!("Time in millis{:?}",now.elapsed().as_millis());
-    println!("Final result{:#?}\nFirst C: {:#?}\nLast C: {:#?}", &market.a_in_b(),&candles.first(),&candles.last());
+    println!(
+        "Final result{:#?}\nFirst C: {:#?}\nLast C: {:#?}",
+        &market.a_in_b(),
+        &candles.first(),
+        &candles.last()
+    );
 }
 
 fn socket_sub_payload(cfg: &Config) -> String {
